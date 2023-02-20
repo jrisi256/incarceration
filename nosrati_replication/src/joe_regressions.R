@@ -12,6 +12,7 @@ library(here)
 library(dplyr)
 library(readr)
 library(lmtest)
+library(ggplot2)
 library(stargazer)
 
 # Load data---------------------------------------------------------------------
@@ -260,7 +261,75 @@ stargazer(
   type = "text"
 )
 
+# Estimate models using education instead of ln(education)----------------------
+FE_drugs_edu <-
+  plm(
+    log(drugs) ~ I(-income_std) + county_jail_adm_std + county_prison_adm_std +
+      hispanics_std + education_std + blacks_std + race_other_std +
+      county_crime_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data
+  )
+
+FE_edu_edu <-
+  plm(
+    log_education ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + drugs_std + blacks_std +
+      race_other_std + county_crime_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data
+  )
+
+FE_income_edu <-
+  plm(
+    log(income) ~ education_std + county_jail_adm_std + county_prison_adm_std +
+      hispanics_std + drugs_std + blacks_std + race_other_std +
+      county_crime_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data
+  )
+
+stargazer(
+  FE_drugs_edu,
+  FE_edu_edu,
+  FE_income_edu,
+  column.labels = c(
+    "Drug Overdose Deaths - No ln(education)",
+    "Fraction High School Graduates - No ln(education)",
+    "Median Income - No ln(education)"
+  ),
+  se = list(
+    coeftest(FE_drugs_edu, vcov = vcovHC(FE_drugs_edu, "arellano"))[, 2],
+    coeftest(FE_edu_edu, vcov = vcovHC(FE_edu_edu, "arellano"))[, 2],
+    coeftest(FE_income_edu, vcov = vcovHC(FE_income_edu, "arellano"))[, 2]
+  ),
+  star.cutoffs = c(0.05, 0.01, 0.001),
+  digits = 4,
+  out = here(out_dir, "education_models.txt"),
+  type = "text"
+)
+
 # Fixed effects models where we are estimating crime----------------------------
+# Compare crime when it is logged vs. not logged using a variety of techniques.
+non_zero_min <-
+  z.data %>%
+  filter(county_crime != 0) %>%
+  pull(county_crime) %>%
+  min(na.rm = T)
+
+z.data_crime <-
+  z.data %>%
+  mutate(
+    county_crime_const = log(county_crime + 1),
+    county_crime_min = log(county_crime + non_zero_min / 2)
+  )
+
+# Very few county/year observations have a homicide rate of 0, only 2.26%
+prcnt_zero <- prop.table(table(z.data_crime$county_crime == 0)) * 100
+
 FE_crime <-
   plm(
     county_crime ~ I(-income_std) + county_jail_adm_std +
@@ -268,8 +337,192 @@ FE_crime <-
       race_other_std + drugs_std + year,
     index = c("fips", "year"),
     model = "within",
-    data = z.data
+    data = z.data_crime
   )
+
+FE_crime_const <-
+  plm(
+    county_crime_const ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + log_education_std + blacks_std +
+      race_other_std + drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+FE_crime_min <-
+  plm(
+    county_crime_min ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + log_education_std + blacks_std +
+      race_other_std + drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+stargazer(
+  FE_crime,
+  FE_crime_const,
+  FE_crime_min,
+  column.labels = c(
+    "Homicide Rate (CDC)",
+    "Homicide Rate (CDC) - ln(homicide + 1)",
+    "Homicide Rate (CDC) - ln(homicide + non-zero minimum / 2)"
+  ),
+  se = list(
+    coeftest(FE_crime, vcov = vcovHC(FE_crime, "arellano"))[, 2],
+    coeftest(FE_crime_const, vcov = vcovHC(FE_crime_const, "arellano"))[, 2],
+    coeftest(FE_crime_min, vcov = vcovHC(FE_crime_min, "arellano"))[, 2]
+  ),
+  star.cutoffs = c(0.05, 0.01, 0.001),
+  digits = 4,
+  out = here(out_dir, "crime_models.txt"),
+  type = "text"
+)
+
+# Examine if effects change when we use education rather than ln(education)
+FE_crime_edu <-
+  plm(
+    county_crime ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + education_std + blacks_std +
+      race_other_std + drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+FE_crime_const_edu <-
+  plm(
+    county_crime_const ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + education_std + blacks_std +
+      race_other_std + drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+FE_crime_min_edu <-
+  plm(
+    county_crime_min ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + education_std + blacks_std +
+      race_other_std + drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+stargazer(
+  FE_crime_edu,
+  FE_crime_const_edu,
+  FE_crime_min_edu,
+  column.labels = c(
+    "Homicide Rate (CDC)",
+    "Homicide Rate (CDC) - ln(homicide + 1)",
+    "Homicide Rate (CDC) - ln(homicide + non-zero minimum / 2)"
+  ),
+  se = list(
+    coeftest(
+      FE_crime_edu,
+      vcov = vcovHC(FE_crime_edu, "arellano")
+    )[, 2],
+    coeftest(
+      FE_crime_const_edu,
+      vcov = vcovHC(FE_crime_const_edu, "arellano")
+    )[, 2],
+    coeftest(
+      FE_crime_min_edu,
+      vcov = vcovHC(FE_crime_min_edu, "arellano")
+    )[, 2]
+  ),
+  star.cutoffs = c(0.05, 0.01, 0.001),
+  digits = 4,
+  out = here(out_dir, "crime_models_education.txt"),
+  type = "text"
+)
+
+# What happens to estimates when we remove education?
+FE_crime_no_edu <-
+  plm(
+    county_crime ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + blacks_std + race_other_std +
+      drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+FE_crime_const_no_edu <-
+  plm(
+    county_crime_const ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + blacks_std + race_other_std +
+      drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+FE_crime_min_no_edu <-
+  plm(
+    county_crime_min ~ I(-income_std) + county_jail_adm_std +
+      county_prison_adm_std + hispanics_std + blacks_std + race_other_std +
+      drugs_std + year,
+    index = c("fips", "year"),
+    model = "within",
+    data = z.data_crime
+  )
+
+stargazer(
+  FE_crime_no_edu,
+  FE_crime_const_no_edu,
+  FE_crime_min_no_edu,
+  column.labels = c(
+    "Homicide Rate (CDC)",
+    "Homicide Rate (CDC) - ln(homicide + 1)",
+    "Homicide Rate (CDC) - ln(homicide + non-zero minimum / 2)"
+  ),
+  se = list(
+    coeftest(
+      FE_crime_no_edu,
+      vcov = vcovHC(FE_crime_no_edu, "arellano")
+    )[, 2],
+    coeftest(
+      FE_crime_const_no_edu,
+      vcov = vcovHC(FE_crime_const_no_edu, "arellano")
+    )[, 2],
+    coeftest(
+      FE_crime_min_no_edu,
+      vcov = vcovHC(FE_crime_min_no_edu, "arellano")
+    )[, 2]
+  ),
+  star.cutoffs = c(0.05, 0.01, 0.001),
+  digits = 4,
+  out = here(out_dir, "crime_models_no_education.txt"),
+  type = "text"
+)
+
+# Why does education have such a large association with the homicide rate?
+corr_edu_crime <- cor(data$county_crime, data$education, use = "complete.obs")
+
+ggplot(z.data, aes(x = education, y = county_crime)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw() +
+  labs(x = "% with at least a HS education",
+       y = "Homicide Rate per 100k")
+
+edu_crime <-
+  z.data %>%
+  group_by(fips) %>%
+  summarise(education = mean(education, na.rm = T),
+            county_crime = mean(county_crime, na.rm = T))
+
+ggplot(edu_crime, aes(x = education, y = county_crime)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  theme_bw() +
+  labs(x = "% with at least a HS education",
+       y = "Homicide Rate per 100k",
+       title = "Average Education vs. Average Homicide Rate Per County")
 
 # Examining different ways of estimating the standard error---------------------
 coeftest(
