@@ -10,8 +10,8 @@ library(stargazer)
 library(ggcorrplot)
 
 # Load data---------------------------------------------------------------------
-county_data <-
-  read_csv(here("replication", "input", "county_data.csv")) %>%
+county_data_nosrati <-
+  read_csv(here("nosrati_replication", "input", "county_data_nosrati.csv")) %>%
   mutate(
     fips = as.character(fips),
     fips = if_else(nchar(fips) == 4, paste0("0", fips), fips)
@@ -31,6 +31,11 @@ incarceration_trends <-
   mutate(year = as.character(year))
 
 # Missing New York City which is really weird-----------------------------------
+#
+# Also important, the numbers from Nosrati et al. 2019 and the most recent data
+# from Vera also do not match, sometimes the discrepancies are quite large.
+# Could be worth investigating.
+#
 # check <-
 #   select(county_data, year, fips, state, county, county_jail_adm, county_prison_adm) %>%
 #   inner_join(select(incarceration_trends, year, fips, total_jail_adm_rate, total_prison_adm_rate))
@@ -42,9 +47,6 @@ incarceration_trends <-
 data_dictionary <-
   read_csv(here("replication", "input", "PLACES_and_500_Cities__Data_Dictionary.csv")) %>%
   mutate(variable = paste0(MeasureID, "_AdjPrev")) %>%
-  rename(year = `PLACES Release 2020`,
-         measure_full_name = `Measure full name`,
-         measure_short_name = `Measure short name`) %>%
   arrange(variable)
 
 # Read in health data-----------------------------------------------------------
