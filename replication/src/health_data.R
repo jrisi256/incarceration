@@ -47,7 +47,8 @@ incarceration_trends <-
 data_dictionary <-
   read_csv(here("replication", "input", "PLACES_and_500_Cities__Data_Dictionary.csv")) %>%
   mutate(variable = paste0(MeasureID, "_AdjPrev")) %>%
-  arrange(variable)
+  arrange(variable) %>%
+  rename(measure_short_name = `Measure short name`)
 
 # Read in health data-----------------------------------------------------------
 health_data <- read_csv(here("replication", "input", "health_data_2020.csv"))
@@ -64,8 +65,6 @@ health_data_des <-
          OBESITY_AdjPrev, PHLTH_AdjPrev, SLEEP_AdjPrev, STROKE_AdjPrev,
          TEETHLOST_AdjPrev)
 
-labels <- data_dictionary$measure_short_name
-
 stargazer(data.frame(health_data_des),
           title = "Descriptive Statistics",
           digits = 2,
@@ -73,6 +72,29 @@ stargazer(data.frame(health_data_des),
           iqr = T,
           covariate.labels = labels,
           out = here("replication", "output", "health_variables", "descript_table_health.txt"))
+
+health_data_reshape <-
+  health_data_des %>%
+  pivot_longer(-CountyFIPS, names_to = "variable", values_to = "value") %>%
+  full_join(select(data_dictionary, measure_short_name, variable), by = "variable") %>%
+  pivot_wider(id_cols = "CountyFIPS", values_from = "value", names_from = "measure_short_name") %>%
+  select(-Depression, -`General Health`) %>%
+  filter(if_all(everything(), ~!is.na(.x))) %>%
+  select(-CountyFIPS)
+
+r_pr <- rcorr(as.matrix(health_data_reshape), type = "pearson")$r
+ggcorrplot(r_pr, type = "lower", lab = T, title = "Pearson Correlation Matrix",
+           digits = 1)
+
+pca <-
+  health_data_reshape %>%
+  prcomp(center = T, scale. = T)
+pcaDat <- get_pca(pca)
+fviz_pca_biplot(pca, label = "var")
+fviz_pca_var(pca)
+
+fviz_screeplot(pca, addlabels = T, choice = "eigenvalue")
+fviz_screeplot(pca, addlabels = T, choice = "variance")
 
 health_data_reshape <-
   health_data_des %>%
