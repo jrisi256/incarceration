@@ -39,5 +39,5 @@ vignettes/*.pdf
 .Renviron
 
 # data files, temporarily ignore
-# *.txt
+*.txt
 *.csv
