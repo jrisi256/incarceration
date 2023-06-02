@@ -36,7 +36,8 @@ health_data_dfs <- map_dfr(health_data_list, function(df) {
       too_few = "align_start"
     ) %>%
     mutate(variable = str_replace_all(tolower(variable), " ", "_"),
-           stem = str_replace_all(tolower(stem), " ", "_"))
+           stem = str_replace_all(tolower(stem), " ", "_"),
+           values = as.numeric(values))
 })
 
 #### Separate national, state, and county level data (focused mostly on county)
@@ -49,6 +50,13 @@ state_level <-
 county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
 
 ################################################### Harmonize data across years
+# Change chlamydia rate in 2010 to sexually transmitted infections.
+# Change primary_care_provider_rate stems and variable names for 2010.
+# Change primary_care_physician stems and variable names for multiple years.
+# Change mental_health_provider stems and variable names for multiple years.
+# Change dentists stems and variable names for multiple years.
+# Change pollution due to particulates from 2010-2012 to match later years.
+# Change lead poisoned children from 2010-2012 to match later years.
 county_level_harmonize <-
   county_level %>%
   mutate(
@@ -58,16 +66,155 @@ county_level_harmonize <-
         "sexually_transmitted_infections",
         variable
       ),
+    variable =
+      if_else(
+        release_year %in% c(2010, 2011, 2012) & variable == "air_pollution-particulate_matter_days",
+        "air_pollution_-_particulate_matter",
+        variable
+      ),
+    variable =
+      if_else(
+        release_year %in% c(2010, 2011, 2012) & variable == "lead_poisoned_children_(wi)",
+        "lead_poisoned_children",
+        variable
+      ),
+    stem =
+      if_else(
+        release_year == 2010 & variable == "primary_care_provider_rate_per_100000",
+        "raw_value",
+        stem
+      ),
+    variable =
+      if_else(
+        release_year == 2010 & variable == "primary_care_provider_rate_per_100000",
+        "primary_care_provider_rate",
+        variable
+      ),
+    stem =
+      if_else(
+        release_year == 2010 & variable == "ratio_of_population_to_primary_care",
+        "ratio",
+        stem
+      ),
+    variable =
+      if_else(
+        release_year == 2010 & variable == "ratio_of_population_to_primary_care",
+        "primary_care_provider_rate",
+        variable
+      ),
+    stem =
+      if_else(
+        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_primary_care",
+        "ratio",
+        stem
+    ),
     variable = 
       if_else(
-        release_year == 2010 & variable == "single-parent_households",
-        "children_in_single-parent_households",
+        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_primary_care",
+        "primary_care_physicians",
         variable
-      )
+      ),
+    stem =
+      if_else(
+        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_mental_health",
+        "ratio",
+        stem
+      ),
+    variable =
+      if_else(
+        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_mental_health",
+        "mental_health_providers",
+        variable
+      ),
+    stem =
+      if_else(
+        release_year %in% c(2012, 2013) & variable == "ratio_of_population_to",
+        "ratio",
+        stem
+      ),
+    variable =
+      if_else(
+        release_year %in% c(2012, 2013) & variable == "ratio_of_population_to",
+        "dentists",
+        variable
+        )
   )
 
-# In 2011, they drop the primary_care_provider_rate_per_100000 variable. The raw rate for 
-# primary_care_physicians also gets reported (strangely as the number of physicians per person).
-# Need to harmonize.
+# Need to turn liquor store density into per 100k people for both 2010 and 2011.
+liquor_store_harmonize_2010 <-
+  county_level_harmonize %>%
+  filter(release_year == 2010, variable == "liquor_store_density") %>%
+  pivot_wider(names_from = c("variable", "stem"), values_from = c("values")) %>%
+  mutate(liquor_store_density_raw_value =
+           if_else(!is.na(liquor_store_density_numerator),
+                   liquor_store_density_numerator * 100000 / liquor_store_density_denominator,
+                   0)) %>%
+  pivot_longer(
+    cols = -matches("state|county|fips|year"),
+    names_to = "variable",
+    values_to = "values"
+  )
 
-# Have to harmonize liquor store values. 2010 is per 10k people, 2011 is per 100k people.
+liquor_store_harmonize_2011 <-
+  county_level_harmonize %>%
+  filter(release_year == 2011, variable == "liquor_store_density") %>%
+  pivot_wider(names_from = c("variable", "stem"), values_from = c("values")) %>%
+  mutate(liquor_store_density_raw_value =
+           liquor_store_density_numerator * 100000 / liquor_store_density_denominator) %>%
+  pivot_longer(
+    cols = -matches("state|county|fips|year"),
+    names_to = "variable",
+    values_to = "values"
+  )
+
+county_level_harmonize <-
+  county_level_harmonize %>%
+  filter(release_year != 2010 | variable != "liquor_store_density") %>%
+  filter(release_year != 2011 | variable != "liquor_store_density") %>%
+  bind_rows(list(liquor_store_harmonize_2010, liquor_store_harmonize_2011))
+
+# Remove duplicate entries for access to healthy foods variable in 2012.
+health_foods_harmonize_2012 <-
+  county_level_harmonize %>%
+  filter(release_year == 2012) %>%
+  filter(str_detect(variable, "^access_to_healthy_foods")) %>%
+  group_by(full_fips, variable, stem) %>%
+  distinct(.keep_all = T) %>%
+  group_by(full_fips, variable, stem) %>%
+  filter(!is.na(values) | n() == 1) %>%
+  ungroup()
+
+county_level_harmonize <-
+  county_level_harmonize %>%
+  filter(release_year != 2012 | variable != "access_to_healthy_foods") %>%
+  bind_rows(health_foods_harmonize_2012)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+a2010 <-
+  county_level_harmonize %>%
+  filter(release_year == 2010, full_fips == "01001")
+
+a2011 <-
+  county_level_harmonize %>%
+  filter(release_year == 2011, full_fips == "01001")
+
+a2012 <-
+  county_level_harmonize %>%
+  filter(release_year == 2012, full_fips == "01001")
+
+a2013 <-
+  county_level_harmonize %>%
+  filter(release_year == 2013, full_fips == "01001")
