@@ -51,11 +51,13 @@ county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
 
 ################################################### Harmonize data across years
 # Change chlamydia rate in 2010 to sexually transmitted infections.
+# Change income inequality to gini coefficient in 2010 to differentiate it from
+#           later versions of income inequality which are measured differently.
 # Change primary_care_provider_rate stems and variable names for 2010.
 # Change primary_care_physician stems and variable names for multiple years.
 # Change mental_health_provider stems and variable names for multiple years.
+# Change other_primary_care_providers stems and variable names for multiple years.
 # Change dentists stems and variable names for multiple years.
-# Change pollution due to particulates from 2010-2012 to match later years.
 # Change lead poisoned children from 2010-2012 to match later years.
 county_level_harmonize <-
   county_level %>%
@@ -66,10 +68,10 @@ county_level_harmonize <-
         "sexually_transmitted_infections",
         variable
       ),
-    variable =
+    variable = 
       if_else(
-        release_year %in% c(2010, 2011, 2012) & variable == "air_pollution-particulate_matter_days",
-        "air_pollution_-_particulate_matter",
+        release_year == 2010 & variable == "income_inequality",
+        "gini_coefficient",
         variable
       ),
     variable =
@@ -104,40 +106,52 @@ county_level_harmonize <-
       ),
     stem =
       if_else(
-        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_primary_care",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_primary_care",
         "ratio",
         stem
     ),
     variable = 
       if_else(
-        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_primary_care",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_primary_care",
         "primary_care_physicians",
         variable
       ),
     stem =
       if_else(
-        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_mental_health",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_mental_health",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% c(2011, 2012, 2013) & variable == "ratio_of_population_to_mental_health",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_mental_health",
         "mental_health_providers",
         variable
       ),
     stem =
       if_else(
-        release_year %in% c(2012, 2013) & variable == "ratio_of_population_to",
+        release_year %in% c(2012, 2013, 2014, 2015) & variable == "ratio_of_population_to",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% c(2012, 2013) & variable == "ratio_of_population_to",
+        release_year %in% c(2012, 2013, 2014, 2015) & variable == "ratio_of_population_to",
         "dentists",
         variable
-        )
+        ),
+    stem = 
+      if_else(
+        release_year %in% c(2014, 2015) & variable == "ratio_of_population_to_primary_care_providers_other_than",
+        "ratio",
+        stem
+      ),
+    variable =
+      if_else(
+        release_year %in% c(2014, 2015) & variable == "ratio_of_population_to_primary_care_providers_other_than",
+        "other_primary_care_providers",
+        variable
+      )
   )
 
 # Need to turn liquor store density into per 100k people for both 2010 and 2011.
@@ -218,3 +232,11 @@ a2012 <-
 a2013 <-
   county_level_harmonize %>%
   filter(release_year == 2013, full_fips == "01001")
+
+a2014 <-
+  county_level_harmonize %>%
+  filter(release_year == 2014, full_fips == "01001")
+
+a2015 <-
+  county_level_harmonize %>%
+  filter(release_year == 2015, full_fips == "01001")
