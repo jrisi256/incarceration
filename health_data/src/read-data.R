@@ -59,6 +59,7 @@ county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
 # Change other_primary_care_providers stems and variable names for multiple years.
 # Change dentists stems and variable names for multiple years.
 # Change lead poisoned children from 2010-2012 to match later years.
+# Change water violations variable name to reflect its new meaning from 2016 on.
 county_level_harmonize <-
   county_level %>%
   mutate(
@@ -80,6 +81,12 @@ county_level_harmonize <-
         "lead_poisoned_children",
         variable
       ),
+    variable = 
+      if_else(
+        release_year %in% c(2016, 2017) % variable == "drinking_water_violations",
+        "drinking_water_violations_bin",
+        variable
+      )
     stem =
       if_else(
         release_year == 2010 & variable == "primary_care_provider_rate_per_100000",
@@ -106,49 +113,49 @@ county_level_harmonize <-
       ),
     stem =
       if_else(
-        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_primary_care",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015, 2016, 2017) & variable == "ratio_of_population_to_primary_care",
         "ratio",
         stem
     ),
     variable = 
       if_else(
-        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_primary_care",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015, 2016, 2017) & variable == "ratio_of_population_to_primary_care",
         "primary_care_physicians",
         variable
       ),
     stem =
       if_else(
-        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_mental_health",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015, 2016, 2017) & variable == "ratio_of_population_to_mental_health",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% c(2011, 2012, 2013, 2014, 2015) & variable == "ratio_of_population_to_mental_health",
+        release_year %in% c(2011, 2012, 2013, 2014, 2015, 2016, 2017) & variable == "ratio_of_population_to_mental_health",
         "mental_health_providers",
         variable
       ),
     stem =
       if_else(
-        release_year %in% c(2012, 2013, 2014, 2015) & variable == "ratio_of_population_to",
+        release_year %in% c(2012, 2013, 2014, 2015, 2016, 2017) & variable == "ratio_of_population_to",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% c(2012, 2013, 2014, 2015) & variable == "ratio_of_population_to",
+        release_year %in% c(2012, 2013, 2014, 2015, 2016, 2017) & variable == "ratio_of_population_to",
         "dentists",
         variable
         ),
     stem = 
       if_else(
-        release_year %in% c(2014, 2015) & variable == "ratio_of_population_to_primary_care_providers_other_than",
+        release_year %in% c(2014, 2015, 2016, 2017) & variable == "ratio_of_population_to_primary_care_providers_other_than",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% c(2014, 2015) & variable == "ratio_of_population_to_primary_care_providers_other_than",
+        release_year %in% c(2014, 2015, 2016, 2017) & variable == "ratio_of_population_to_primary_care_providers_other_than",
         "other_primary_care_providers",
         variable
       )
@@ -240,3 +247,16 @@ a2014 <-
 a2015 <-
   county_level_harmonize %>%
   filter(release_year == 2015, full_fips == "01001")
+
+a2016 <-
+  county_level_harmonize %>%
+  filter(release_year == 2016, full_fips == "01001")
+
+# children free lunch
+a2017 <-
+  county_level_harmonize %>%
+  filter(release_year == 2017, full_fips == "01001")
+
+a2018 <-
+  county_level_harmonize %>%
+  filter(release_year == 2018, full_fips == "01001")
