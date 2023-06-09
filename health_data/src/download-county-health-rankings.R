@@ -7,12 +7,68 @@ dir.create(here(dir, "dictionary"))
 dir.create(here(dir, "documentation"))
 dir.create(here(dir, "data"))
 dir.create(here(dir, "data_source"))
+dir.create(here(dir, "state_compare"))
+dir.create(here(dir, "variable_change"))
 
 years <- 2010:2023
 dictionaries <- here(dir, "dictionary", paste0("dictionary_", years, ".pdf"))
 doc <- here(dir, "documentation", paste0("documentation_", years, ".pdf"))
 data <- here(dir, "data", paste0("health-data_", years, ".csv"))
 data_source <- here(dir, "data_source", paste0("source_", years, ".xlsx"))
+state_comp <- here(dir, "state_compare", paste0("state-comp_", years, ".pdf"))
+var_change <- here(dir, "variable_change", paste0("var-change_", years, ".pdf"))
+
+download_var_change <- function(yr, dest) {
+  s <- "https://www.countyhealthrankings.org/sites/default/files/"
+  
+  if(yr == 2021 | yr == 2022) {
+    download.file(
+      paste0(s, "media/document/", yr, "%20Measure%20Changes.pdf"),
+      dest
+    )
+  } else if(yr == 2019) {
+    download.file(paste0(s, "Measure%20changes%202018-2019.pdf"), dest)
+  } else if(yr == 2020) {
+    download.file(
+      paste0(s, "media/document/Measure%20changes%202019-2020.pdf"),
+      dest
+    )
+  } else if(yr == 2023) {
+    download.file(
+      paste0(s, "media/document/Measure%20changes%202022-2023_0.pdf"),
+      dest
+    )
+  }
+}
+
+download_state_comp <- function(yr, dest) {
+  s <- "https://www.countyhealthrankings.org/sites/default/files/"
+  
+  if(yr == 2021 | yr == 2022 | yr == 2023) {
+    download.file(
+      paste0(
+        s,
+        "media/document/",
+        yr,
+        "%20Comparability%20Across%20States.pdf"),
+      dest
+    )
+  } else if(yr == 2019) {
+    download.file(
+      paste0(s, yr, "%20Comparability%20across%20states.pdf"),
+      dest
+    )
+  } else if(yr == 2020) {
+    download.file(
+      paste0(
+        s,
+        "media/document/",
+        yr,
+        "%20Comparability%20across%20states.pdf"),
+      dest
+    )
+  }
+}
 
 download_dictionary <- function(yr, dest) {
   s <- "https://www.countyhealthrankings.org/sites/default/files/"
@@ -136,3 +192,5 @@ pmap(list(years, dictionaries), download_dictionary)
 pmap(list(years, doc), download_documentation)
 pmap(list(years, data), download_data)
 pmap(list(years, data_source), download_source)
+pmap(list(years, state_comp), download_state_comp)
+pmap(list(years, var_change), download_var_change)
