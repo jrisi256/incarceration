@@ -16,9 +16,8 @@ health_data_list <- map(files, read_csv)
 ############################ Concatenate all the data into one large data frame.
 health_data_dfs <-
   pmap_dfr(
-    list(health_data_list[as.character(2010:2022)], names(health_data_list[as.character(2010:2022)])),
+    list(health_data_list, names(health_data_list)),
     function(df, yr) {
-      
       # Filter out junk rows, make the data long, and rename identifying columns
       df <-
         df %>%
@@ -29,17 +28,19 @@ health_data_dfs <-
           names_to = "variables",
           values_to = "values"
         ) %>%
-        rename(state_fips = "State FIPS Code",
-               county_fips = "County FIPS Code",
-               full_fips = "5-digit FIPS Code",
-               state_abb = "State Abbreviation",
-               county_name = "Name",
-               release_year = "Release Year")
-      
+        rename(
+          state_fips = "State FIPS Code",
+          county_fips = "County FIPS Code",
+          full_fips = "5-digit FIPS Code",
+          state_abb = "State Abbreviation",
+          county_name = "Name",
+          release_year = "Release Year"
+        )
+
       race_str <- "\\(AIAN\\)|\\(White\\)|\\(Black\\)|\\(Hispanic\\)|\\(Asian/Pacific Islander\\)|\\(Asian\\)"
       stem_str <- "raw value|numerator|denominator|CI high|CI low|flag|unreliable"
       locate_race <- str_locate(df$variables, race_str)
-      
+
       # separate out variable, stem, and race
       df %>%
         mutate(
@@ -53,7 +54,7 @@ health_data_dfs <-
               "raw value ",
               str_sub(variables, start, end)
             ),
-          variables
+            variables
           )
         ) %>%
         separate_wider_regex(
@@ -62,12 +63,15 @@ health_data_dfs <-
           too_few = "align_start"
         ) %>%
         select(-start, -end) %>%
-        mutate(variable = str_replace_all(tolower(variable), " ", "_"),
-               stem = str_replace_all(tolower(stem), " ", "_"),
-               race = str_replace_all(tolower(race), "\\(|\\)", ""),
-               values = as.numeric(values),
-               release_year = yr)
-    })
+        mutate(
+          variable = str_replace_all(tolower(variable), " ", "_"),
+          stem = str_replace_all(tolower(stem), " ", "_"),
+          race = str_replace_all(tolower(race), "\\(|\\)", ""),
+          values = as.numeric(values),
+          release_year = yr
+        )
+    }
+  )
 
 ###################### Separate out county level data (focused mostly on county)
 county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
@@ -77,19 +81,19 @@ county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
 ########################## Change income inequality to gini coefficient in 2010.
 ############# Change lead poisoned children from 2010-2012 to match later years.
 ########### Change primary_care_provider_rate stems and variable names for 2010.
-## I rename mammography_screening to mammography_screening_67_69 from 2011-2018.
+#### Rename mammography_screening to mammography_screening_67_69 from 2011-2018.
 # Change %_non-hispanic_african_american to %_non-hispanic_black from 2011-2019.
-####### Change stem values for severe housing problems variables from 2019-2022.
-### Recalculate preventable hospital stays to be per 1000 people from 2019-2022.
-######## Change water violations name to reflect its new meaning from 2016-2022.
-######### Change primary_care_physician stems and variable names from 2011-2022.
-######### Change mental_health_provider stems and variable names from 2011-2022.
-### Change other_primary_care_providers stems and variable names from 2014-2022.
-####################### Change dentists stems and variable names from 2012-2022.
-################################## Rename lbw to low_birthweight from 2020-2022.
-################# Change the stem to raw_value for crude_suicide from 2020-2022.
-###### Change the stems/names for formal/informal juvenile cases from 2020-2022.
-## I rename mammography_screening to mammography_screening_65_74 From 2019-2022.
+####### Change stem values for severe housing problems variables from 2019-2023.
+### Recalculate preventable hospital stays to be per 1000 people from 2019-2023.
+######## Change water violations name to reflect its new meaning from 2016-2023.
+######### Change primary_care_physician stems and variable names from 2011-2023.
+######### Change mental_health_provider stems and variable names from 2011-2023.
+### Change other_primary_care_providers stems and variable names from 2014-2023.
+####################### Change dentists stems and variable names from 2012-2023.
+################################## Rename lbw to low_birthweight from 2020-2023.
+################# Change the stem to raw_value for crude_suicide from 2020-2023.
+###### Change the stems/names for formal/informal juvenile cases from 2020-2023.
+#### Rename mammography_screening to mammography_screening_65_74 From 2019-2023.
 county_level_harmonize <-
   county_level %>%
   mutate(
@@ -99,7 +103,7 @@ county_level_harmonize <-
         "sexually_transmitted_infections",
         variable
       ),
-    variable = 
+    variable =
       if_else(
         release_year == 2010 & variable == "income_inequality",
         "gini_coefficient",
@@ -135,9 +139,9 @@ county_level_harmonize <-
         "primary_care_provider_rate",
         variable
       ),
-    stem = 
+    stem =
       if_else(
-        release_year %in% 2019:2022 &
+        release_year %in% 2019:2023 &
           variable %in% c(
             "percentage_of_households_with_high_housing",
             "percentage_of_households_with",
@@ -146,117 +150,117 @@ county_level_harmonize <-
         "raw_value",
         stem
       ),
-    variable = 
+    variable =
       case_when(
         release_year %in% 2011:2018 & variable == "mammography_screening" ~ "mammography_screening_67_69",
-        release_year %in% 2019:2022 & variable == "mammography_screening" ~ "mammography_screening_65_74",
+        release_year %in% 2019:2023 & variable == "mammography_screening" ~ "mammography_screening_65_74",
         T ~ variable
       ),
-    variable = 
+    variable =
       if_else(
-        release_year %in% 2019:2022 & variable == "percentage_of_households_with_high_housing",
+        release_year %in% 2019:2023 & variable == "percentage_of_households_with_high_housing",
         "percentage_of_households_with_high_housing_costs",
         variable
       ),
     variable =
       if_else(
-        release_year %in% 2019:2022 & variable == "percentage_of_households_with",
+        release_year %in% 2019:2023 & variable == "percentage_of_households_with",
         "percentage_of_households_with_overcrowding",
         variable
       ),
     values =
       if_else(
-        release_year %in% 2019:2022 & variable == "preventable_hospital_stays" & stem == "raw_value",
+        release_year %in% 2019:2023 & variable == "preventable_hospital_stays" & stem == "raw_value",
         values / 100,
         values
       ),
-    variable = 
+    variable =
       if_else(
-        release_year %in% 2016:2022 & variable == "drinking_water_violations",
+        release_year %in% 2016:2023 & variable == "drinking_water_violations",
         "drinking_water_violations_bin",
         variable
       ),
     stem =
       if_else(
-        release_year %in% 2011:2022 & variable == "ratio_of_population_to_primary_care",
+        release_year %in% 2011:2023 & variable == "ratio_of_population_to_primary_care",
         "ratio",
         stem
-    ),
-    variable = 
+      ),
+    variable =
       if_else(
-        release_year %in% 2011:2022 & variable == "ratio_of_population_to_primary_care",
+        release_year %in% 2011:2023 & variable == "ratio_of_population_to_primary_care",
         "primary_care_physicians",
         variable
       ),
     stem =
       if_else(
-        release_year %in% 2011:2022 & variable == "ratio_of_population_to_mental_health",
+        release_year %in% 2011:2023 & variable == "ratio_of_population_to_mental_health",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% 2011:2022 & variable == "ratio_of_population_to_mental_health",
+        release_year %in% 2011:2023 & variable == "ratio_of_population_to_mental_health",
         "mental_health_providers",
         variable
       ),
     stem =
       if_else(
-        release_year %in% 2012:2022 & variable == "ratio_of_population_to",
+        release_year %in% 2012:2023 & variable == "ratio_of_population_to",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% 2012:2022 & variable == "ratio_of_population_to",
+        release_year %in% 2012:2023 & variable == "ratio_of_population_to",
         "dentists",
         variable
-        ),
-    stem = 
+      ),
+    stem =
       if_else(
-        release_year %in% 2014:2022 & variable == "ratio_of_population_to_primary_care_providers_other_than",
+        release_year %in% 2014:2023 & variable == "ratio_of_population_to_primary_care_providers_other_than",
         "ratio",
         stem
       ),
     variable =
       if_else(
-        release_year %in% 2014:2022 & variable == "ratio_of_population_to_primary_care_providers_other_than",
+        release_year %in% 2014:2023 & variable == "ratio_of_population_to_primary_care_providers_other_than",
         "other_primary_care_providers",
         variable
       ),
     variable =
       if_else(
-        release_year %in% 2020:2022 & variable == "lbw",
+        release_year %in% 2020:2023 & variable == "lbw",
         "low_birthweight",
         variable
       ),
     stem =
       if_else(
-        release_year %in% 2020:2022 & variable == "crude_suicide",
+        release_year %in% 2020:2023 & variable == "crude_suicide",
         "raw_value",
         stem
       ),
     stem =
       if_else(
-        release_year %in% 2020:2022 & variable == "number_of_juvenile_delinquency_cases_formally_processed_by_a_juvenile",
+        release_year %in% 2020:2023 & variable == "number_of_juvenile_delinquency_cases_formally_processed_by_a_juvenile",
         "raw_value",
         stem
       ),
     variable =
       if_else(
-        release_year %in% 2020:2022 & variable == "number_of_juvenile_delinquency_cases_formally_processed_by_a_juvenile",
+        release_year %in% 2020:2023 & variable == "number_of_juvenile_delinquency_cases_formally_processed_by_a_juvenile",
         "number_of_juvenile_delinquency_cases_formally_processed_by_a_juvenile_court",
         variable
       ),
     stem =
       if_else(
-        release_year %in% 2020:2022 & variable == "number_of_informally_handled_juvenile_delinquency",
+        release_year %in% 2020:2023 & variable == "number_of_informally_handled_juvenile_delinquency",
         "raw_value",
         stem
       ),
     variable =
       if_else(
-        release_year %in% 2020:2022 & variable == "number_of_informally_handled_juvenile_delinquency",
+        release_year %in% 2020:2023 & variable == "number_of_informally_handled_juvenile_delinquency",
         "number_of_informally_handled_juvenile_delinquency_cases",
         variable
       )
@@ -268,10 +272,14 @@ liquor_store_harmonize_2010 <-
   filter(release_year == 2010, variable == "liquor_store_density") %>%
   select(-race) %>%
   pivot_wider(names_from = c("variable", "stem"), values_from = c("values")) %>%
-  mutate(liquor_store_density_raw_value =
-           if_else(!is.na(liquor_store_density_numerator),
-                   liquor_store_density_numerator * 100000 / liquor_store_density_denominator,
-                   0)) %>%
+  mutate(
+    liquor_store_density_raw_value =
+      if_else(
+        !is.na(liquor_store_density_numerator),
+        liquor_store_density_numerator * 100000 / liquor_store_density_denominator,
+        0
+      )
+  ) %>%
   pivot_longer(
     cols = -matches("state|county|fips|year"),
     names_to = "variable",
@@ -293,8 +301,10 @@ liquor_store_harmonize_2011 <-
   select(-race) %>%
   filter(release_year == 2011, variable == "liquor_store_density") %>%
   pivot_wider(names_from = c("variable", "stem"), values_from = c("values")) %>%
-  mutate(liquor_store_density_raw_value =
-           liquor_store_density_numerator * 100000 / liquor_store_density_denominator) %>%
+  mutate(
+    liquor_store_density_raw_value =
+      liquor_store_density_numerator * 100000 / liquor_store_density_denominator
+  ) %>%
   pivot_longer(
     cols = -matches("state|county|fips|year"),
     names_to = "variable",
@@ -332,11 +342,3 @@ county_level_harmonize <-
   county_level_harmonize %>%
   filter(release_year != 2012 | variable != "access_to_healthy_foods") %>%
   bind_rows(health_foods_harmonize_2012)
-
-a2021 <-
-  county_level_harmonize %>%
-  filter(release_year == 2021, full_fips == "01001")
-
-a2022 <-
-  county_level_harmonize %>%
-  filter(release_year == 2022, full_fips == "01001")
