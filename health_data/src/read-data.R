@@ -342,3 +342,6 @@ county_level_harmonize <-
   county_level_harmonize %>%
   filter(release_year != 2012 | variable != "access_to_healthy_foods") %>%
   bind_rows(health_foods_harmonize_2012)
+
+write_csv(county_level_harmonize,
+          file = here("health_data", "src", "county_level_data_harmonized.csv"))
