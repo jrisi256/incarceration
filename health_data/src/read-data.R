@@ -94,6 +94,9 @@ county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
 ################# Change the stem to raw_value for crude_suicide from 2020-2023.
 ###### Change the stems/names for formal/informal juvenile cases from 2020-2023.
 #### Rename mammography_screening to mammography_screening_65_74 From 2019-2023.
+######### Harmonize American Indian/Alaskan Native from 2011-2022 to match 2023.
+###################### Harmonize females from 2011-2021 to match newer releases.
+### Fix Hawaiian/Other Pacific Islanders from 2011-2022 to match newer releases.
 county_level_harmonize <-
   county_level %>%
   mutate(
@@ -154,6 +157,27 @@ county_level_harmonize <-
       case_when(
         release_year %in% 2011:2018 & variable == "mammography_screening" ~ "mammography_screening_67_69",
         release_year %in% 2019:2023 & variable == "mammography_screening" ~ "mammography_screening_65_74",
+        T ~ variable
+      ),
+    variable = 
+      case_when(
+        release_year %in% 2011:2019 & variable == "%_american_indian_and_alaskan_native" ~ "%_american_indian_or_alaska_native",
+        release_year %in% 2020:2022 & variable == "%_american_indian_&_alaska_native" ~ "%_american_indian_or_alaska_native",
+        T ~ variable
+      ),
+    variable =
+      case_when(
+        release_year %in% 2011:2021 & variable == "%_females" ~ "%_female",
+        T ~ variable
+      ),
+    variable = 
+      case_when(
+        release_year %in% 2011:2022 & variable == "%_native_hawaiian/other_pacific_islander" ~ "%_native_hawaiian_or_other_pacific_islander",
+        T ~ variable
+      ),
+    variable =
+      case_when(
+        release_year %in% 2011:2019 & variable == "%_non-hispanic_african_american" ~ "%_non-hispanic_black",
         T ~ variable
       ),
     variable =

@@ -9,9 +9,11 @@ county_harmonize <-
 year_matching <- read_csv(here("health_data", "src", "year_matching.csv"))
 
 discard_vars <-
-  c("Only available for the state of Wisconsin. No documentation available.",
+  c(
+    "Only available for the state of Wisconsin. No documentation available.",
     "Only available for the state of New York. No documentation available.",
-    "Only available for the state of Florida. No documentation available.")
+    "Only available for the state of Florida. No documentation available."
+  )
 
 wi_fl_ny_only <-
   year_matching %>%
@@ -22,16 +24,24 @@ wi_fl_ny_only <-
 nation_level_longitudinal <-
   county_harmonize %>%
   filter(stem == "raw_value", is.na(race)) %>%
+  select(-race) %>%
   filter(!(variable %in% wi_fl_ny_only$variable)) %>%
-  group_by(variable, race, release_year) %>%
+  group_by(variable, release_year) %>%
   summarise(mean_value = mean(values, na.rm = T)) %>%
-  group_by(variable, race) %>%
-  mutate(standardized_mean_values = scale(mean_value, center  = T, scale = T)[,1]) %>%
+  mutate(standardized_mean_values = scale(mean_value)[, 1]) %>%
   ungroup()
 
-ggplot(nation_level_longitudinal, aes(x = release_year, y = mean_value)) +
+ggplot(
+  nation_level_longitudinal,
+  aes(
+    x = release_year,
+    y = standardized_mean_values
+  )
+) +
   geom_point(aes(color = variable)) +
   geom_line(aes(group = variable, color = variable)) +
   theme_bw() +
   theme(legend.position = "none") +
   facet_wrap(~variable)
+
+a <- county_level %>% filter(str_detect(variable, "african|c_black")) %>% distinct(variable, release_year)

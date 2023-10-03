@@ -7,6 +7,10 @@
 * In 2012, there are duplicate columns for *access_to_healthy_foods*, and I remove those columns.
 * From 2010-2012, lead poisoned children was named *lead_poisoned_children_(wi)*. Starting in 2013, the variable name changed to *lead_poisoned_children*. I update the values from 2010-2012 to reflect the change in the variable name.
 * From 2011-2019, I rename *%_non-hispanic_african_american* to *%_non-hispanic_black* for consistency purposes because newer releases of the data use Black instead of African-American.
+* From 2011-2019, I rename *%_american_indian_and_alaskan_native* to *%_american_indian_or_alaska_native* to match the newest release of the data.
+* From 2020-2022, I rename *%_american_indian_&_alaska_native* to *%_american_indian_or_alaska_native* to match the newest release of the data.
+* From 2011-2021, I rename *%_females* to *%_female* to match the newest releases of the data.
+* From 2011-2022, I rename *%_native_hawaiian/other_pacific_islander* to *%_native_hawaiian_or_other_pacific_islander* to match the newest release of the data.
 * From 2016-2023, *drinking_water_violations* changes from a percentage variable (% of people exposed to a drinking water violation) to a binary variable (county was or was not exposed to a drinking water violation). I change the name of this variable to *drinking_water_violations_bin* to reflect the new meaning of the variable.
 * From 2011-2023, I change *ratio_of_population_to_primary_care* to *primary_care_physicians*, and I change the stem value to *ratio*.
 * From 2011-2023, I change *ratio_of_population_mental_health* to *mental_health_providers*, and I change the stem value to *ratio*.
