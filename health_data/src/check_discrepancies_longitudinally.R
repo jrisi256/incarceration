@@ -45,3 +45,4 @@ ggplot(
   facet_wrap(~variable)
 
 a <- county_level %>% filter(str_detect(variable, "african|c_black")) %>% distinct(variable, release_year)
+a2 <- county_harmonize %>% filter(full_fips == "01001", variable == "premature_death")
