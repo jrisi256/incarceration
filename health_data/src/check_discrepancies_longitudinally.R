@@ -48,6 +48,13 @@ ggplot(
   theme(legend.position = "none") +
   facet_wrap(~variable)
 
+nation_level_longitudinal %>%
+  filter(variable == "excessive_drinking") %>%
+  ggplot(aes(x = release_year, y = standardized_mean_values)) +
+  geom_point() +
+  geom_line() +
+  theme_bw()
+
 # State level
 state_level_trends <-
   map(unique(clean$variable),
@@ -63,7 +70,7 @@ state_level_trends <-
 
 names(state_level_trends) <- unique(clean$variable)
 
-ggplot(state_level_trends$poor_physical_health_days, aes(x = release_year, y = standardized_mean_values)) +
+ggplot(state_level_trends$mental_health_providers, aes(x = release_year, y = standardized_mean_values)) +
   geom_point(aes(color = state_fips)) +
   geom_line(aes(color = state_fips, group = state_fips)) +
   theme_bw()
