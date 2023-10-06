@@ -70,12 +70,12 @@ state_level_trends <-
 
 names(state_level_trends) <- unique(clean$variable)
 
-ggplot(state_level_trends$mental_health_providers, aes(x = release_year, y = standardized_mean_values)) +
+ggplot(state_level_trends$food_insecurity, aes(x = release_year, y = standardized_mean_values)) +
   geom_point(aes(color = state_fips)) +
   geom_line(aes(color = state_fips, group = state_fips)) +
   theme_bw()
 
-# county level
+says # county level
 county_level_trends <-
   map(unique(clean$variable),
       function(col_name, df) {
