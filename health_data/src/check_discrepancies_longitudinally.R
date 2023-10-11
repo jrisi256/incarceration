@@ -70,7 +70,7 @@ state_level_trends <-
 
 names(state_level_trends) <- unique(clean$variable)
 
-ggplot(state_level_trends$food_insecurity, aes(x = release_year, y = standardized_mean_values)) +
+ggplot(state_level_trends$motor_vehicle_crash_deaths, aes(x = release_year, y = standardized_mean_values)) +
   geom_point(aes(color = state_fips)) +
   geom_line(aes(color = state_fips, group = state_fips)) +
   theme_bw()
