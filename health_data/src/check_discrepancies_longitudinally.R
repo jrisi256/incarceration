@@ -75,7 +75,7 @@ ggplot(state_level_trends$motor_vehicle_crash_deaths, aes(x = release_year, y = 
   geom_line(aes(color = state_fips, group = state_fips)) +
   theme_bw()
 
-says # county level
+# county level
 county_level_trends <-
   map(unique(clean$variable),
       function(col_name, df) {
