@@ -371,5 +371,5 @@ county_level_harmonize <-
 
 write_csv(
   county_level_harmonize,
-  file = here("clean_chrr-wphi", "output", "county_level_data_harmonized.csv")
+  file = here("clean_chrr-wphi", "output", "county_repeated-cross-section.csv")
 )
