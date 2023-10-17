@@ -12,7 +12,7 @@ years <- 2021:2023
 data_dir <- here("clean_chrr-wphi", "input", "trend_data")
 files <- here(data_dir, paste0("trend-data_", years, ".csv"))
 names(files) <- years
-trend_data_list <- map(files, read_csv)
+longitudinal_data_list <- map(files, read_csv)
 
 county_repeated_cross_section <-
   read_csv(
@@ -74,8 +74,8 @@ compare_longitudinal_dfs <- function(joined_df) {
 
 compare_2021_2022 <-
   inner_join(
-    trend_data_list$`2021`,
-    trend_data_list$`2022`,
+    longitudinal_data_list$`2021`,
+    longitudinal_data_list$`2022`,
     by = c("statecode", "countycode", "measurename", "yearspan")
   ) %>%
   compare_longitudinal_dfs() %>%
@@ -84,8 +84,8 @@ compare_2021_2022 <-
 
 compare_2022_2023 <-
   inner_join(
-    trend_data_list$`2022`,
-    trend_data_list$`2023`,
+    longitudinal_data_list$`2022`,
+    longitudinal_data_list$`2023`,
     by = c("statecode", "countycode", "measurename", "yearspan")
   ) %>%
   compare_longitudinal_dfs() %>%
@@ -93,17 +93,17 @@ compare_2022_2023 <-
   all()
 
 #################################################################
-##                Combine longitudinal datasets                ##
+##                Combine longitudinal data sets               ##
 #################################################################
 
 # Keep variables unique to 2021
-trend_data_list$`2021` <-
-  trend_data_list$`2021` %>%
+longitudinal_data_list$`2021` <-
+  longitudinal_data_list$`2021` %>%
   filter(measurename %in% c("Adult obesity", "Physical inactivity"))
 
 # Keep variables unique to 2022
-trend_data_list$`2022` <-
-  trend_data_list$`2022` %>%
+longitudinal_data_list$`2022` <-
+  longitudinal_data_list$`2022` %>%
   filter(measurename == "Violent crime rate")
 
 #################################################################
@@ -111,8 +111,8 @@ trend_data_list$`2022` <-
 #################################################################
 
 # Transform longitudinal data so it can be merged with cross sectional data
-trend_data <-
-  bind_rows(trend_data_list) %>%
+longitudinal_data <-
+  bind_rows(longitudinal_data_list) %>%
   filter(countycode != "000") %>%
   rename(
     state_fips = statecode,
@@ -130,7 +130,14 @@ trend_data <-
     variable = str_replace_all(tolower(variable), " ", "_"),
     race = NA_character_
   ) %>%
-  select(-measureid, -differflag) %>%
+  select(
+    -measureid,
+    -differflag,
+    -state_fips,
+    -county_fips,
+    -county_name,
+    -state_abb
+  ) %>%
   pivot_longer(
     cols =
       c(
@@ -149,56 +156,87 @@ trend_data <-
         variable == "primary_care_physicians" & stem == "raw_value" ~ "ratio",
         variable == "dentists" & stem == "raw_value" ~ "ratio",
         T ~ stem
+      ),
+    values =
+      case_when(
+        variable == "preventable_hospital_stays" & stem == "raw_value" ~
+          values / 100,
+        T ~ values
+      ),
+    variable =
+      case_when(
+        variable == "mammography_screening" ~ "mammography_screening_65_74",
+        T ~ variable
+      ),
+    variable =
+      case_when(
+        variable == "unemployment_rate" ~ "unemployment",
+        T ~ variable
+      ),
+    variable =
+      case_when(
+        variable == "violent_crime_rate" ~ "violent_crime",
+        T ~ variable
+      ),
+    variable =
+      case_when(
+        variable == "school_funding" ~ "school_funding_adequacy",
+        T ~ variable
       )
   )
 
-# Merge longitudinal and cross-sectional data. I have found the differflag
-# variable to be unreliable in matching. Sometimes it will says the values are
-# different when they are not and vice versa.
+# Merge longitudinal and cross-sectional data.
 cross_sectional_merged <-
   county_repeated_cross_section %>%
   select(-state_fips, -county_fips, -county_name, -state_abb) %>%
   full_join(
-    select(trend_data, -state_fips, -county_fips, -county_name, -state_abb),
+    longitudinal_data,
     by = c("full_fips", "release_year", "variable", "stem", "race")
   ) %>%
   mutate(
-    cross_or_long =
+    cross_or_longitudinal =
       case_when(
         is.na(values.x) & is.na(values.y) ~ "always_use",
         !is.na(values.x) & is.na(values.y) ~ "always_use",
         is.na(values.x) & !is.na(values.y) ~ "missing_c",
-        values.x == values.y ~ "always_use",
-        values.x != values.y ~ "use_c"
+        near(values.x, values.y) ~ "always_use",
+        !near(values.x, values.y) ~ "use_c"
       )
   )
 
 # Keep entries where longitudinal and cross-sectional data do not match.
 longitudinal_merged <-
   cross_sectional_merged %>%
-  filter(cross_or_long != "always_use") %>%
+  filter(cross_or_longitudinal != "always_use") %>%
   select(-values.x) %>%
   rename(values = values.y) %>%
   mutate(
-    cross_or_long =
+    cross_or_longitudinal =
       case_when(
-        cross_or_long == "missing_c" ~ "replace_missing_c_with_l",
-        cross_or_long == "use_c" ~ "use_l"
+        cross_or_longitudinal == "missing_c" ~ "replace_missing_c_with_l",
+        cross_or_longitudinal == "use_c" ~ "use_l"
       )
   )
 
-# What happens when I join on year of data release and values are different (as compared to release year)?
-# Keep only full fips and create separate table for county/state partial FIPs and names
-# combine longitudinal and cross-sectional
-combined_cross_long  <-
+# Combine all cases (values match and values do not match)
+combined_cross_longitudinal  <-
   cross_sectional_merged %>%
   select(-values.y) %>%
   rename(values = values.x) %>%
   bind_rows(longitudinal_merged)
 
-# go through documentation and see what hidden gems emerge
-# finally, set the break points in terms of variable comparison
+# What happens when I join on year of data release and values are different (as compared to release year)?
+# need to disambiguate between which release is correct and when
 
+# Keep only full fips and create separate table for county/state partial FIPs and names
+
+# finally, set the break points in terms of variable comparison
+# separate out preventable hospital stays (measuring two different things)
+# violent crime has no release year?
+# mammography screening is indeed different (release from longiutindal data which goes back further does not match earlier releases)
+# not all longitudinal data has a release year (even when it seems like it should)
+# clean out duplicate entries from cross-sectional (since some releases use the same year(s))
+# check out drug poisoning vs. drug overdoses
 
 
 
@@ -221,41 +259,43 @@ discard_vars <-
 wi_fl_ny_only <-
   year_matching %>%
   filter(notes %in% discard_vars) %>%
+  filter
   distinct(variable, .keep_all = T)
 
 clean <-
-  county_harmonize %>%
+  county_repeated_cross_section %>%
   filter(stem == "raw_value", is.na(race)) %>%
   select(-race) %>%
   filter(!(variable %in% wi_fl_ny_only$variable))
+
+variables <- unique(clean$variable)
 
 # Nation level
 nation_level_longitudinal <-
   clean %>%
   group_by(variable, release_year) %>%
   summarise(mean_value = mean(values, na.rm = T)) %>%
-  mutate(standardized_mean_values = scale(mean_value)[, 1]) %>%
+  arrange(factor(variable, levels = variables)) %>%
+  #mutate(standardized_mean_values = scale(mean_value)[, 1]) %>%
   ungroup()
 
-ggplot(
-  nation_level_longitudinal,
-  aes(
-    x = release_year,
-    y = standardized_mean_values
-  )
-) +
-  geom_point(aes(color = variable)) +
-  geom_line(aes(group = variable, color = variable)) +
-  theme_bw() +
-  theme(legend.position = "none") +
-  facet_wrap(~variable)
+pdf(here("nation_trends.pdf"), onefile = T)
+map(
+  variables,
+  function(var, df) {
+    df %>%
+      filter(variable == var) %>%
+      ggplot(aes(x = release_year, y = mean_value)) +
+      geom_point() +
+      geom_line(aes(group = variable)) +
+      theme_bw() +
+      labs(y = var)
+  },
+  df = nation_level_longitudinal
+)
+dev.off()
 
-nation_level_longitudinal %>%
-  filter(variable == "excessive_drinking") %>%
-  ggplot(aes(x = release_year, y = standardized_mean_values)) +
-  geom_point() +
-  geom_line() +
-  theme_bw()
+clean <- clean %>% arrange(variable)
 
 # State level
 state_level_trends <-
@@ -265,35 +305,26 @@ state_level_trends <-
           filter(variable == col_name) %>%
           group_by(state_fips, variable, release_year) %>%
           summarise(mean_value = mean(values, na.rm = T)) %>%
-          mutate(standardized_mean_values = scale(mean_value)[, 1]) %>%
+          #mutate(standardized_mean_values = scale(mean_value)[, 1]) %>%
           ungroup()
       },
       df = clean)
 
 names(state_level_trends) <- unique(clean$variable)
 
-ggplot(state_level_trends$motor_vehicle_crash_deaths, aes(x = release_year, y = standardized_mean_values)) +
-  geom_point(aes(color = state_fips)) +
-  geom_line(aes(color = state_fips, group = state_fips)) +
-  theme_bw()
-
-# county level
-county_level_trends <-
-  map(unique(clean$variable),
-      function(col_name, df) {
-        df %>%
-          filter(variable == col_name) %>%
-          group_by(full_fips, variable, release_year) %>%
-          summarise(mean_value = mean(values, na.rm = T)) %>%
-          mutate(standardized_mean_values = scale(mean_value)[, 1]) %>%
-          ungroup()
-      },
-      df = clean)
-
-names(county_level_trends) <- unique(clean$variable)
-
-ggplot(county_level_trends$premature_death, aes(x = release_year, y = standardized_mean_values)) +
-  geom_point(aes(color = full_fips)) +
-  geom_line(aes(color = full_fips, group = full_fips)) +
-  theme_bw() +
-  theme(legend.position = "none")
+pdf(here("state_trends.pdf"), onefile = T)
+map(
+  state_level_trends,
+  function(df) {
+    var <- unique(df$variable)
+    
+    df %>%
+      ggplot(aes(x = release_year, y = mean_value)) +
+      geom_point(aes(color = state_fips)) +
+      geom_line(aes(group = state_fips, color = state_fips)) +
+      theme_bw() +
+      labs(y = var) +
+      theme(legend.position = "none")
+  }
+)
+dev.off()
