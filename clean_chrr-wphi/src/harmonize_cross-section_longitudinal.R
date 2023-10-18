@@ -4,6 +4,7 @@ library(readr)
 library(tidyr)
 library(purrr)
 library(stringr)
+library(ggplot2)
 
 ##################################################################
 ##     Read in cross-sectional and longitudinal health data     ##
@@ -20,6 +21,19 @@ county_repeated_cross_section <-
       "clean_chrr-wphi", "output", "county_repeated-cross-section.csv"
     )
   )
+
+a <-
+  county_repeated_cross_section %>%
+  filter(variable == "mental_health_providers", release_year <= 2012, is.na(race), stem == "raw_value") %>%
+  group_by(state_abb, release_year) %>%
+  summarise(mean = mean(values, na.rm = T)) %>%
+  ungroup()
+
+ggplot(a, aes(x = release_year, y = mean)) +
+  geom_point(aes(color = state_abb)) +
+  geom_line(aes(color = state_abb, group = state_abb)) +
+  theme_bw() +
+  theme(legend.position = "none")
 
 ##################################################################
 ##          Test longitudinal data sets for consistency         ##
@@ -157,12 +171,6 @@ longitudinal_data <-
         variable == "dentists" & stem == "raw_value" ~ "ratio",
         T ~ stem
       ),
-    values =
-      case_when(
-        variable == "preventable_hospital_stays" & stem == "raw_value" ~
-          values / 100,
-        T ~ values
-      ),
     variable =
       case_when(
         variable == "mammography_screening" ~ "mammography_screening_65_74",
@@ -181,6 +189,11 @@ longitudinal_data <-
     variable =
       case_when(
         variable == "school_funding" ~ "school_funding_adequacy",
+        T ~ variable
+      ),
+    values =
+      case_when(
+        variable == "preventable_hospital_stays" ~ values / 100,
         T ~ variable
       )
   )
@@ -249,6 +262,9 @@ year_matching <-
   read_csv(here("clean_chrr-wphi", "output", "year_matching.csv"),
            col_types = list(nj_year = "c"))
 
+dictionary <-
+  read_csv(here("clean_chrr-wphi", "output", "my_dictionary_v2.csv"))
+
 discard_vars <-
   c(
     "Only available for the state of Wisconsin. No documentation available.",
@@ -259,16 +275,20 @@ discard_vars <-
 wi_fl_ny_only <-
   year_matching %>%
   filter(notes %in% discard_vars) %>%
-  filter
-  distinct(variable, .keep_all = T)
+  distinct(variable, .keep_all = T) %>%
+  pull(variable)
 
 clean <-
   county_repeated_cross_section %>%
   filter(stem == "raw_value", is.na(race)) %>%
   select(-race) %>%
-  filter(!(variable %in% wi_fl_ny_only$variable))
+  filter(!(variable %in% wi_fl_ny_only))
 
 variables <- unique(clean$variable)
+
+dictionary_vars <-
+  dictionary %>%
+  filter(is.na(variable_definitions) | !str_detect(variable_definitions, "Only available for the state"))
 
 # Nation level
 nation_level_longitudinal <-
@@ -294,8 +314,6 @@ map(
   df = nation_level_longitudinal
 )
 dev.off()
-
-clean <- clean %>% arrange(variable)
 
 # State level
 state_level_trends <-

@@ -20,26 +20,28 @@ health_data_list <- map(files, read_csv)
 health_data_list$`2010` <-
   health_data_list$`2010` %>%
   filter(`Liquor store density raw value` != "v041_rawvalue") %>%
-  mutate(`Liquor store density raw value` =
-           as.numeric(`Liquor store density raw value`)) %>%
-  mutate(`Liquor store density raw value` =
-           `Liquor store density raw value` * 10) %>%
+  mutate(
+    `Liquor store density raw value` =
+      as.numeric(`Liquor store density raw value`) * 10
+  ) %>%
   mutate(across(everything(), as.character))
 
 # Do the full calculation because in the original release they round.
 health_data_list$`2011` <-
   health_data_list$`2011` %>%
   filter(`Liquor store density raw value` != "v041_rawvalue") %>%
-  mutate(`Liquor store density raw value` =
-           as.numeric(`Liquor store density raw value`),
-         `Liquor store density numerator` =
-           as.numeric(`Liquor store density numerator`),
-         `Liquor store density denominator` =
-           as.numeric(`Liquor store density denominator`),
-         new =
-           `Liquor store density numerator` *
-           100000 /
-           `Liquor store density denominator`) %>%
+  mutate(
+    `Liquor store density raw value` =
+      as.numeric(`Liquor store density raw value`),
+    `Liquor store density numerator` =
+      as.numeric(`Liquor store density numerator`),
+    `Liquor store density denominator` =
+      as.numeric(`Liquor store density denominator`),
+    new =
+      `Liquor store density numerator` *
+        100000 /
+        `Liquor store density denominator`
+  ) %>%
   mutate(across(everything(), as.character))
 
 ##############################################################################
@@ -365,6 +367,18 @@ county_level_harmonize <-
         release_year %in% 2020:2023 &
           variable == "number_of_informally_handled_juvenile_delinquency",
         "number_of_informally_handled_juvenile_delinquency_cases",
+        variable
+      ),
+    variable =
+      if_else(
+        release_year %in% 2022 & variable == "childcare_cost_burden",
+        "child_care_cost_burden",
+        variable
+      ),
+    variable =
+      if_else(
+        release_year %in% 2022 & variable == "childcare_centers",
+        "child_care_centers",
         variable
       )
   )
