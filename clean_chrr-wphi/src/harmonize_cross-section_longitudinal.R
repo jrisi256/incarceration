@@ -6,6 +6,19 @@ library(purrr)
 library(stringr)
 library(ggplot2)
 
+discard_vars <-
+  c(
+    "Only available for the state of Wisconsin. No documentation available.",
+    "Only available for the state of New York. No documentation available.",
+    "Only available for the state of Florida. No documentation available."
+  )
+
+wi_fl_ny_only <-
+  year_matching %>%
+  filter(notes %in% discard_vars) %>%
+  distinct(variable, .keep_all = T) %>%
+  pull(variable)
+
 ##################################################################
 ##     Read in cross-sectional and longitudinal health data     ##
 ##################################################################
@@ -14,6 +27,13 @@ data_dir <- here("clean_chrr-wphi", "input", "trend_data")
 files <- here(data_dir, paste0("trend-data_", years, ".csv"))
 names(files) <- years
 longitudinal_data_list <- map(files, read_csv)
+
+county_level_harmonize <-
+  read_csv(
+    here(
+      "clean_chrr-wphi", "output", "county_repeated-cross-section.csv"
+    )
+  )
 
 county_repeated_cross_section <-
   read_csv(
@@ -346,3 +366,45 @@ map(
   }
 )
 dev.off()
+
+
+
+
+year_matching <- year_matching %>% select(release_year, start_year, end_year, variable)
+
+
+county_repeated_cross_section <-
+  county_repeated_cross_section %>%
+  full_join(year_matching, by = c("variable", "release_year")) %>%
+  select(-state_abb, -county_name, -county_fips, -state_fips)
+
+check <-
+  county_repeated_cross_section %>%
+  group_by(full_fips, variable, stem, race, start_year, end_year) %>%
+  mutate(n_distinct = n_distinct(values)) %>%
+  ungroup()
+
+check <- check %>% arrange(full_fips, variable, start_year, stem, race)
+
+check_fltr <-
+  check %>%
+  filter(n_distinct > 1) %>%
+  arrange(full_fips, start_year, end_year, variable, race, stem, release_year)
+
+a <-
+  county_level_harmonize %>%
+  filter(variable == "%_not_proficient_in_english",
+         stem == "raw_value",
+         is.na(race),
+         release_year <= 2012)
+
+a2 <- a %>% group_by(full_fips) %>% distinct(values, .keep_all = T)
+
+a3 <- a2 %>% group_by(full_fips) %>% filter(n() > 1)
+
+state <-
+  a %>%
+  group_by(state_fips, variable, release_year) %>%
+  summarise(mean = mean(values, na.rm = T)) %>% ungroup()
+
+state2 <- state %>% group_by(state_fips) %>% distinct(mean, .keep_all = T) %>% ungroup()

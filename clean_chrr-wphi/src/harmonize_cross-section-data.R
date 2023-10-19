@@ -37,7 +37,7 @@ health_data_list$`2011` <-
       as.numeric(`Liquor store density numerator`),
     `Liquor store density denominator` =
       as.numeric(`Liquor store density denominator`),
-    new =
+    `Liquor store density raw value` =
       `Liquor store density numerator` *
         100000 /
         `Liquor store density denominator`
@@ -246,6 +246,15 @@ county_level_harmonize <-
         "percentage_of_households_with_overcrowding",
         variable
       ),
+    variable =
+      if_else(
+        release_year %in% 2019:2023 & variable == paste0(
+          "percentage_of_households_with_lack_of_kitchen_or_plumbing_",
+          "facilities"
+        ),
+        "percentage_of_households_with_lack_of_kitchen_or_plumbing",
+        variable
+      ),
     values =
       if_else(
         release_year %in% 2019:2023 &
@@ -380,8 +389,99 @@ county_level_harmonize <-
         release_year %in% 2022 & variable == "childcare_centers",
         "child_care_centers",
         variable
+      ),
+    values =
+      if_else(
+        release_year == 2013 & variable == "infant_mortality",
+        values / 100,
+        values
       )
   )
+
+county_level_harmonize <-
+  county_level_harmonize %>%
+  mutate(race = if_else(is.na(race), "all", race))
+
+#################################################################
+##             Separate out county and state names             ##
+#################################################################
+state_county_names <-
+  county_level_harmonize %>%
+  distinct(state_fips, county_fips, full_fips, state_abb, county_name)
+
+one_name <-
+  state_county_names %>%
+  group_by(full_fips) %>%
+  mutate(n = n()) %>%
+  filter(n == 1) %>%
+  ungroup()
+
+two_name <-
+  state_county_names %>%
+  group_by(full_fips) %>%
+  mutate(n = n()) %>%
+  filter(n > 1) %>%
+  filter(str_length(county_name) == max(str_length(county_name))) %>%
+  mutate(county_name = case_when(
+    county_name == "La Salle Parish" ~ "LaSalle Parish",
+    county_name == "La Salle County" ~ "LaSalle County",
+    T ~ county_name
+  )) %>%
+  ungroup()
+
+state_county_names_clean <- bind_rows(one_name, two_name) %>% select(-n)
+
+##################################################################
+##                     Fix duplicate values                     ##
+##################################################################
+county_level_harmonize <-
+  county_level_harmonize %>%
+  select(-state_abb, -state_fips, -county_name, -county_fips)
+
+year_matching <-
+  read_csv(
+    here("clean_chrr-wphi", "output", "year_matching.csv"),
+    col_types = cols_only(
+      release_year = "d",
+      start_year = "c",
+      end_year = "c",
+      variable = "c",
+      notes = "c"
+    )
+  ) %>%
+  filter(!is.na(variable), !is.na(start_year))
+
+duplicate_years <-
+  county_level_harmonize %>%
+  filter(
+    variable != "high_school_graduation") %>%
+  inner_join(
+    select(year_matching, -notes),
+    by = c("variable", "release_year")
+  ) %>%
+  group_by(full_fips, start_year, end_year, variable, stem, race) %>%
+  mutate(n_distinct = n_distinct(values)) %>%
+  filter(n_distinct > 1) %>%
+  ungroup() %>%
+  arrange(full_fips, variable, stem, race)
+
+# Always use year which is not missing not matter what stems are missing?
+# Think this through more.
+
+a <- duplicate_years %>% filter(stem != "ci_high" & stem != "ci_low")
+a2 <- duplicate_years %>% group_by(full_fips, variable, race) %>% filter(any(is.na(values)))
+a3 <- county_level_harmonize %>%
+  filter(full_fips == "02198",
+         variable == "mammography_screening_67_69",
+         release_year %in% c(2017, 2018))
+##################################################################
+##                        Write out data                        ##
+##################################################################
+
+write_csv(
+  state_county_names_clean,
+  file = here("clean_chrr-wphi", "output", "county_state_names.csv")
+)
 
 write_csv(
   county_level_harmonize,
