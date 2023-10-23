@@ -6,19 +6,6 @@ library(purrr)
 library(stringr)
 library(ggplot2)
 
-discard_vars <-
-  c(
-    "Only available for the state of Wisconsin. No documentation available.",
-    "Only available for the state of New York. No documentation available.",
-    "Only available for the state of Florida. No documentation available."
-  )
-
-wi_fl_ny_only <-
-  year_matching %>%
-  filter(notes %in% discard_vars) %>%
-  distinct(variable, .keep_all = T) %>%
-  pull(variable)
-
 ##################################################################
 ##     Read in cross-sectional and longitudinal health data     ##
 ##################################################################
@@ -28,32 +15,19 @@ files <- here(data_dir, paste0("trend-data_", years, ".csv"))
 names(files) <- years
 longitudinal_data_list <- map(files, read_csv)
 
-county_level_harmonize <-
+county_repeated_cross_section_latest <-
   read_csv(
     here(
-      "clean_chrr-wphi", "output", "county_repeated-cross-section.csv"
+      "clean_chrr-wphi", "output", "county_repeated-cross-section_latest.csv"
     )
   )
 
-county_repeated_cross_section <-
+county_repeated_cross_section_earliest <-
   read_csv(
     here(
-      "clean_chrr-wphi", "output", "county_repeated-cross-section.csv"
+      "clean_chrr-wphi", "output", "county_repeated-cross-section_earliest.csv"
     )
   )
-
-a <-
-  county_repeated_cross_section %>%
-  filter(variable == "mental_health_providers", release_year <= 2012, is.na(race), stem == "raw_value") %>%
-  group_by(state_abb, release_year) %>%
-  summarise(mean = mean(values, na.rm = T)) %>%
-  ungroup()
-
-ggplot(a, aes(x = release_year, y = mean)) +
-  geom_point(aes(color = state_abb)) +
-  geom_line(aes(color = state_abb, group = state_abb)) +
-  theme_bw() +
-  theme(legend.position = "none")
 
 ##################################################################
 ##          Test longitudinal data sets for consistency         ##
@@ -162,7 +136,7 @@ longitudinal_data <-
   mutate(
     full_fips = paste0(state_fips, county_fips),
     variable = str_replace_all(tolower(variable), " ", "_"),
-    race = NA_character_
+    race = "all"
   ) %>%
   select(
     -measureid,
@@ -170,7 +144,8 @@ longitudinal_data <-
     -state_fips,
     -county_fips,
     -county_name,
-    -state_abb
+    -state_abb,
+    -trendbreak
   ) %>%
   pivot_longer(
     cols =
@@ -214,30 +189,68 @@ longitudinal_data <-
     values =
       case_when(
         variable == "preventable_hospital_stays" ~ values / 100,
-        T ~ variable
+        T ~ values
       )
-  )
+  ) %>%
+  separate_wider_delim(
+    yearspan,
+    delim = "-",
+    names = c("start_year", "end_year"),
+    too_few = "align_start"
+  ) %>%
+  mutate(end_year = if_else(is.na(end_year), start_year, end_year),
+         start_year = as.numeric(start_year),
+         end_year = as.numeric(end_year))
 
 # Merge longitudinal and cross-sectional data.
 cross_sectional_merged <-
-  county_repeated_cross_section %>%
-  select(-state_fips, -county_fips, -county_name, -state_abb) %>%
+  county_repeated_cross_section_latest %>%
   full_join(
     longitudinal_data,
-    by = c("full_fips", "release_year", "variable", "stem", "race")
+    by = c("full_fips", "start_year", "end_year", "variable", "stem", "race")
   ) %>%
   mutate(
     cross_or_longitudinal =
       case_when(
-        is.na(values.x) & is.na(values.y) ~ "always_use",
-        !is.na(values.x) & is.na(values.y) ~ "always_use",
-        is.na(values.x) & !is.na(values.y) ~ "missing_c",
-        near(values.x, values.y) ~ "always_use",
-        !near(values.x, values.y) ~ "use_c"
+        is.na(values.x) & is.na(values.y) ~ "both missing",
+        !is.na(values.x) & is.na(values.y) ~ "longitudinal missing",
+        is.na(values.x) & !is.na(values.y) ~ "cross missing",
+        near(values.x, values.y) ~ "match",
+        !near(values.x, values.y) ~ "no match"
       )
   )
 
+# Compare matches between longitudinal and cross-sectional data
+compare <- cross_sectional_merged %>% filter(stem == "raw_value")
+compare_tbl <- table(compare$cross_or_longitudinal)
+
+# Compare in cases where longitudinal data is not missing
+compare_long <-
+  cross_sectional_merged %>%
+  filter(stem == "raw_value", !is.na(values.y))
+
+compare_tbl_long <- table(compare_long$cross_or_longitudinal)
+
+# Compare in cases where neither longitudinal nor cross-sectional is missing
+compare_long_cross <-
+  cross_sectional_merged %>%
+  filter(stem == "raw_value", !is.na(values.y), !is.na(values.x))
+
+compare_tbl_long_cross <- table(compare_long_cross$cross_or_longitudinal)
+
 # Keep entries where longitudinal and cross-sectional data do not match.
+cross_sectional_merged <-
+  cross_sectional_merged %>%
+  mutate(
+    cross_or_longitudinal =
+      case_when(
+        cross_or_longitudinal %in%
+          c("both missing", "longitudinal missing", "match") ~ "always_use",
+        cross_or_longitudinal == "cross_missing" ~ "missing_c",
+        cross_or_longitudinal == "no match" ~ "use_c"
+      )
+  )
+
 longitudinal_merged <-
   cross_sectional_merged %>%
   filter(cross_or_longitudinal != "always_use") %>%
@@ -256,19 +269,15 @@ combined_cross_longitudinal  <-
   cross_sectional_merged %>%
   select(-values.y) %>%
   rename(values = values.x) %>%
-  bind_rows(longitudinal_merged)
-
-# What happens when I join on year of data release and values are different (as compared to release year)?
-# need to disambiguate between which release is correct and when
-
-# Keep only full fips and create separate table for county/state partial FIPs and names
+  bind_rows(longitudinal_merged) %>%
+  rename(release_year_cross = release_year.x,
+         release_year_longitudinal = release_year.y)
 
 # finally, set the break points in terms of variable comparison
 # separate out preventable hospital stays (measuring two different things)
 # violent crime has no release year?
 # mammography screening is indeed different (release from longiutindal data which goes back further does not match earlier releases)
 # not all longitudinal data has a release year (even when it seems like it should)
-# clean out duplicate entries from cross-sectional (since some releases use the same year(s))
 # check out drug poisoning vs. drug overdoses
 
 
@@ -366,45 +375,3 @@ map(
   }
 )
 dev.off()
-
-
-
-
-year_matching <- year_matching %>% select(release_year, start_year, end_year, variable)
-
-
-county_repeated_cross_section <-
-  county_repeated_cross_section %>%
-  full_join(year_matching, by = c("variable", "release_year")) %>%
-  select(-state_abb, -county_name, -county_fips, -state_fips)
-
-check <-
-  county_repeated_cross_section %>%
-  group_by(full_fips, variable, stem, race, start_year, end_year) %>%
-  mutate(n_distinct = n_distinct(values)) %>%
-  ungroup()
-
-check <- check %>% arrange(full_fips, variable, start_year, stem, race)
-
-check_fltr <-
-  check %>%
-  filter(n_distinct > 1) %>%
-  arrange(full_fips, start_year, end_year, variable, race, stem, release_year)
-
-a <-
-  county_level_harmonize %>%
-  filter(variable == "%_not_proficient_in_english",
-         stem == "raw_value",
-         is.na(race),
-         release_year <= 2012)
-
-a2 <- a %>% group_by(full_fips) %>% distinct(values, .keep_all = T)
-
-a3 <- a2 %>% group_by(full_fips) %>% filter(n() > 1)
-
-state <-
-  a %>%
-  group_by(state_fips, variable, release_year) %>%
-  summarise(mean = mean(values, na.rm = T)) %>% ungroup()
-
-state2 <- state %>% group_by(state_fips) %>% distinct(mean, .keep_all = T) %>% ungroup()
