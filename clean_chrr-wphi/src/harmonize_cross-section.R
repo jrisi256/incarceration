@@ -135,7 +135,7 @@ county_level <- health_data_dfs %>% filter(str_sub(full_fips, 3, 5) != "000")
 ##################################################################
 ##                 Harmonize data across years.                 ##
 ##################################################################
-county_level_harmonize <-
+county_harmonize <-
   county_level %>%
   mutate(
     variable =
@@ -205,6 +205,14 @@ county_level_harmonize <-
       ),
     variable =
       case_when(
+        release_year %in% 2010:2018 & variable == "preventable_hospital_stays" ~
+          "preventable_hospital_stays_10_18",
+        release_year %in% 2019:2023 & variable == "preventable_hospital_stays" ~
+          "preventable_hospital_stays_19_23",
+        T ~ variable
+      ),
+    variable =
+      case_when(
         release_year %in% 2011:2019 &
           variable == "%_american_indian_and_alaskan_native" ~
           "%_american_indian_or_alaska_native",
@@ -254,14 +262,6 @@ county_level_harmonize <-
         ),
         "percentage_of_households_with_lack_of_kitchen_or_plumbing",
         variable
-      ),
-    values =
-      if_else(
-        release_year %in% 2019:2023 &
-          variable == "preventable_hospital_stays" &
-          stem == "raw_value",
-        values / 100,
-        values
       ),
     variable =
       if_else(
@@ -341,6 +341,20 @@ county_level_harmonize <-
         "raw_value",
         stem
       ),
+    values =
+      if_else(
+        release_year %in% 2020:2023 & values < 0 &
+          variable %in%
+            c(
+              paste0(
+                "number_of_juvenile_delinquency_cases_formally_processed_by_a",
+                "_juvenile"
+              ),
+              "number_of_informally_handled_juvenile_delinquency"
+            ),
+        NA_real_,
+        values
+      ),
     stem =
       if_else(
         release_year %in% 2020:2023 &
@@ -398,15 +412,31 @@ county_level_harmonize <-
       )
   )
 
-county_level_harmonize <-
-  county_level_harmonize %>%
+county_harmonize <-
+  county_harmonize %>%
   mutate(race = if_else(is.na(race), "all", race))
+
+#################################################################
+##            Dichotomize drinking water violations            ##
+#################################################################
+drinking_water_bin <-
+  county_harmonize %>%
+  filter(variable == "drinking_water_violations", stem == "raw_value") %>%
+  mutate(drinking_water_violations_bin = if_else(values > 0, 1, 0)) %>%
+  select(-variable, -values) %>%
+  pivot_longer(
+    drinking_water_violations_bin,
+    names_to = "variable",
+    values_to = "values"
+  )
+
+county_harmonize <- bind_rows(county_harmonize, drinking_water_bin)
 
 #################################################################
 ##             Separate out county and state names             ##
 #################################################################
 state_county_names <-
-  county_level_harmonize %>%
+  county_harmonize %>%
   distinct(state_fips, county_fips, full_fips, state_abb, county_name)
 
 one_name <-
@@ -432,109 +462,28 @@ two_name <-
 state_county_names_clean <- bind_rows(one_name, two_name) %>% select(-n)
 
 ##################################################################
-##                     Fix duplicate values                     ##
-##################################################################
-
-# Connects release year to actual years of data coverage
-year_matching <-
-  read_csv(
-    here("clean_chrr-wphi", "output", "year_matching.csv"),
-    col_types =
-      cols_only(
-        release_year = "c",
-        start_year = "c",
-        end_year = "c",
-        variable = "c"
-      )
-  ) %>%
-  filter(!is.na(start_year))
-
-county_level_harmonize_year_match <-
-  county_level_harmonize %>%
-  inner_join(year_matching, by = c("variable", "release_year"))
-
-# Connects release year to actual years of data coverage by state
-year_state_matching <-
-  read_csv(
-    here("clean_chrr-wphi", "output", "year_state_matching.csv"),
-    col_types = cols(release_year = "c", start_year = "c", end_year = "c")
-  )
-
-county_level_harmonize_year_state_match <-
-  county_level_harmonize %>%
-  inner_join(
-    year_state_matching,
-    by = c("variable", "release_year", "state_abb")
-  )
-
-county_level_harmonize_distinct <-
-  bind_rows(
-    county_level_harmonize_year_match,
-    county_level_harmonize_year_state_match
-  ) %>%
-  select(-state_abb, -state_fips, -county_name, -county_fips) %>%
-  group_by(full_fips, start_year, end_year, variable, stem, race) # %>%
-# mutate(n_distinct = n_distinct(values),
-#        n = n())
-
-# When there is a duplicate entry, keep the one from the latest release.
-county_level_harmonize_latest <-
-  county_level_harmonize_distinct %>%
-  # select(-n, -n_distinct) %>%
-  filter(release_year == max(release_year)) %>%
-  ungroup()
-
-# When there is a duplicate entry, keep the one from the earliest release.
-county_level_harmonize_earliest <-
-  county_level_harmonize_distinct %>%
-  # select(-n, -n_distinct) %>%
-  filter(release_year == min(release_year)) %>%
-  ungroup()
-
-compare <-
-  county_level_harmonize_latest %>%
-  filter(stem == "raw_value") %>%
-  full_join(
-    filter(county_level_harmonize_earliest, stem == "raw_value"),
-    by = c("full_fips", "variable", "stem", "race", "start_year", "end_year")
-  ) %>%
-  mutate(
-    match =
-      case_when(
-        is.na(values.x) & is.na(values.y) ~ "both missing",
-        is.na(values.x) & !is.na(values.y) ~ "latest missing",
-        !is.na(values.x) & is.na(values.y) ~ "earliest missing",
-        near(values.x, values.y) ~ "match",
-        !near(values.x, values.y) ~ "no match"
-      )
-  )
-
-compare_tbl <- table(compare$match)
-
-##################################################################
 ##                        Write out data                        ##
 ##################################################################
+if (!dir.exists(here("clean_chrr-wphi", "output", "harmonize"))) {
+  dir.create(here("clean_chrr-wphi", "output", "harmonize"))
+}
+
 write_csv(
   state_county_names_clean,
   file = here("clean_chrr-wphi", "output", "county_state_names.csv")
 )
 
-write_csv(
-  county_level_harmonize_latest,
-  file =
-    here(
-      "clean_chrr-wphi",
-      "output",
-      "county_repeated-cross-section_latest.csv"
-    )
-)
+county_harmonize <-
+  county_harmonize %>%
+  select(-state_abb, -state_fips, -county_name, -county_fips)
 
 write_csv(
-  county_level_harmonize_earliest,
+  county_harmonize,
   file =
     here(
       "clean_chrr-wphi",
       "output",
-      "county_repeated-cross-section_earliest.csv"
+      "harmonize",
+      "harmonize_cross-section.csv"
     )
 )

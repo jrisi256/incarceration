@@ -1,0 +1,157 @@
+---
+title: "Comparing Longitudinal and Cross-Sectional Estimates"
+execute: 
+  echo: FALSE
+format: pdf
+---
+
+```{r, message = F}
+library(here)
+library(dplyr)
+library(readr)
+library(purrr)
+library(ggplot2)
+library(forcats)
+library(flextable)
+```
+
+```{r, message = F}
+cross <-
+  read_csv(here("clean_chrr-wphi", "output", "joined", "cross_joined.csv"))
+
+longitudinal <-
+  read_csv(
+    here(
+      "clean_chrr-wphi",
+      "output",
+      "joined",
+      "longitudinal_joined.csv"
+    )
+  )
+```
+
+```{r}
+cross_raw <- cross %>%
+  filter(stem == "raw_value") %>%
+  select(-stem)
+
+longitudinal_raw <-
+  longitudinal %>%
+  filter(stem == "raw_value") %>%
+  select(-stem)
+```
+
+```{r}
+compare <-
+  full_join(
+    cross_raw,
+    longitudinal_raw,
+    by = c(
+      "full_fips",
+      "release_year",
+      "variable",
+      "race",
+      "start_year",
+      "end_year"
+    )
+  ) %>%
+  mutate(
+    cross_or_longitudinal =
+      case_when(
+        is.na(values.x) & is.na(values.y) ~ "both missing",
+        near(values.x, values.y) ~ "match",
+        !near(values.x, values.y) ~ "no match"
+      )
+  )
+
+compare_tbl <- table(compare$cross_or_longitudinal)
+compare_tbl_prop <- prop.table(compare_tbl) * 100
+```
+
+* **Number of rows**: `r nrow(compare)`
+* **Number of matches (regardless of missing)**: `r compare_tbl[["both missing"]] + compare_tbl[["match"]]`
+* **Percent of matches (regardless of missing)**: `r compare_tbl_prop[["both missing"]] + compare_tbl_prop[["match"]]`
+
+```{r}
+flextable(as.data.frame(compare_tbl))
+flextable(as.data.frame(compare_tbl_prop))
+```
+
+```{r}
+non_match_variables <-
+  compare %>%
+  count(variable, cross_or_longitudinal) %>%
+  group_by(variable) %>%
+  filter(any(cross_or_longitudinal == "no match")) %>%
+  mutate(prcnt = n / sum(n)) %>%
+  ungroup() %>%
+  filter(cross_or_longitudinal == "no match")
+
+ggplot(non_match_variables) +
+  geom_bar(aes(x = fct_reorder(variable, n), y = n), stat = "identity") +
+  coord_flip() +
+  theme_bw() +
+  xlab("Variable")
+
+ggplot(non_match_variables, aes(x = fct_reorder(variable, prcnt), y = prcnt)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_bw() +
+  xlab("Variable") +
+  ylab("Proportion of variable rows which do match")
+```
+
+```{r}
+non_matches <-
+  compare %>%
+  filter(cross_or_longitudinal == "no match") %>%
+  mutate(
+    ratio =
+      if_else(
+        values.x != 0 & values.y != 0,
+        values.x / values.y,
+        NaN
+      )
+  ) %>%
+  ungroup()
+
+non_matching_vars <- unique(non_matches$variable)
+```
+
+```{r}
+densitychart <- function(df, col) {
+  df <- df %>% filter(variable == col)
+  values <- df %>% pull(ratio)
+  boxplot_coord <- max(density(values, na.rm = T)$y) / 2
+  
+  ggplot(df, aes(x = ratio)) +
+    geom_boxplot(aes(y = -boxplot_coord), width = boxplot_coord) +
+    geom_density() +
+    labs(x = col, y = "density") +
+    theme_bw()
+}
+
+map(as.list(non_matching_vars), densitychart, df = non_matches)
+```
+
+```{r}
+descriptive_table_ratio <-
+  non_matches %>%
+  group_by(variable) %>%
+  summarise(
+    mean = round(mean(ratio, na.rm = T), digits = 3),
+    sd = round(sd(ratio, na.rm = T), digits = 3),
+    min = round(min(ratio, na.rm = T), digits = 3),
+    p25 = round(quantile(ratio, probs = 0.25, na.rm = T)[["25%"]], digits = 3),
+    median = round(median(ratio, na.rm = T), digits = 3),
+    p75 = round(quantile(ratio, probs = 0.75, na.rm = T)[["75%"]], digits = 3),
+    iqr = round(IQR(ratio, na.rm = T), digits = 3),
+    mad = round(mad(ratio, na.rm = T), digits = 3),
+    max = round(max(ratio, na.rm = T), digits = 3),
+    nr_missing = sum(is.nan(ratio))
+  )
+
+ft <- flextable(descriptive_table_ratio)
+ft <- fit_to_width(ft, max_width = 7.5)
+ft
+```
