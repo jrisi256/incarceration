@@ -122,7 +122,8 @@ longitudinal_joined <-
   joined %>%
   filter(
     cross_or_longitudinal == "longitudinal missing" &
-      stem == "raw_value") %>%
+      stem == "raw_value"
+  ) %>%
   mutate(replace = T) %>%
   select(-values.x, -values.y, -cross_or_longitudinal, -stem) %>%
   full_join(joined, multiple = "all") %>%
@@ -136,7 +137,7 @@ longitudinal_joined <-
 #################################################################
 ##                      Write out results                      ##
 #################################################################
-if(!dir.exists(here("clean_chrr-wphi", "output", "joined"))) {
+if (!dir.exists(here("clean_chrr-wphi", "output", "joined"))) {
   dir.create(here("clean_chrr-wphi", "output", "joined"))
 }
 

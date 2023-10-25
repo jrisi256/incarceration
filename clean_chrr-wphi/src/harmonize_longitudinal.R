@@ -103,7 +103,7 @@ longitudinal_data_list$`2022` <-
 longitudinal_data_list$`2023` <-
   longitudinal_data_list$`2023` %>%
   mutate(
-    ratio = 
+    ratio =
       if_else(
         measurename %in% c("Primary care physicians", "Dentists"),
         rawvalue,
@@ -180,11 +180,12 @@ longitudinal_data <-
         variable == "school_funding" ~ "school_funding_adequacy",
         T ~ variable
       ),
-    variable = 
+    variable =
       case_when(
         variable == "preventable_hospital_stays" ~
           "preventable_hospital_stays_19_23",
-        T ~ variable)
+        T ~ variable
+      )
   ) %>%
   separate_wider_delim(
     yearspan,
@@ -192,15 +193,17 @@ longitudinal_data <-
     names = c("start_year", "end_year"),
     too_few = "align_start"
   ) %>%
-  mutate(end_year = if_else(is.na(end_year), start_year, end_year),
-         start_year = as.numeric(start_year),
-         end_year = as.numeric(end_year)) %>%
+  mutate(
+    end_year = if_else(is.na(end_year), start_year, end_year),
+    start_year = as.numeric(start_year),
+    end_year = as.numeric(end_year)
+  ) %>%
   filter(stem != "ratio" | !is.na(values))
 
 #################################################################
 ##                      Write out results                      ##
 #################################################################
-if(!dir.exists(here("clean_chrr-wphi", "output", "harmonize"))) {
+if (!dir.exists(here("clean_chrr-wphi", "output", "harmonize"))) {
   dir.create(here("clean_chrr-wphi", "output", "harmonize"))
 }
 
