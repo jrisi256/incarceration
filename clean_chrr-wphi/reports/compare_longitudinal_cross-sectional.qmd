@@ -33,12 +33,12 @@ longitudinal <-
 ```{r}
 cross_raw <- cross %>%
   filter(stem == "raw_value") %>%
-  select(-stem)
+  select(-stem, -cross_longitudinal_match)
 
 longitudinal_raw <-
   longitudinal %>%
   filter(stem == "raw_value") %>%
-  select(-stem)
+  select(-stem, cross_longitudinal_match)
 ```
 
 ```{r}

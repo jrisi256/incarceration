@@ -110,8 +110,15 @@ cross_joined <-
     replace = if_else(is.na(replace), F, replace),
     values.x = if_else(replace, values.y, values.x)
   ) %>%
-  select(-values.y, -replace, -cross_or_longitudinal) %>%
-  rename(values = values.x)
+  select(-values.y, -replace) %>%
+  rename(
+    values = values.x,
+    cross_longitudinal_match = cross_or_longitudinal
+  ) %>%
+  mutate(
+    cross_longitudinal_match =
+      if_else(cross_longitudinal_match != "no match", "match", "no match")
+  )
 
 # Keep longitudinal estimates in cases where they do not match.
 # Keep longitudinal estimates when cross-sectional estimates are missing.
@@ -131,8 +138,15 @@ longitudinal_joined <-
     replace = if_else(is.na(replace), F, replace),
     values.y = if_else(replace, values.x, values.y)
   ) %>%
-  select(-values.x, -replace, -cross_or_longitudinal) %>%
-  rename(values = values.y)
+  select(-values.x, -replace) %>%
+  rename(
+    values = values.y,
+    cross_longitudinal_match = cross_or_longitudinal
+  ) %>%
+  mutate(
+    cross_longitudinal_match =
+      if_else(cross_longitudinal_match != "no match", "match", "no match")
+  )
 
 #################################################################
 ##                      Write out results                      ##
