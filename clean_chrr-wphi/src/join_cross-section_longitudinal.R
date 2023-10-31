@@ -49,6 +49,54 @@ year_state_matching <-
     col_types = cols(release_year = "d", start_year = "d", end_year = "d")
   )
 
+#################################################################
+##             Separate out county and state names             ##
+#################################################################
+state_county_names <-
+  cross_section %>%
+  distinct(state_fips, county_fips, full_fips, state_abb, county_name)
+
+one_name <-
+  state_county_names %>%
+  group_by(full_fips) %>%
+  mutate(n = n()) %>%
+  filter(n == 1) %>%
+  ungroup()
+
+two_name <-
+  state_county_names %>%
+  group_by(full_fips) %>%
+  mutate(n = n()) %>%
+  filter(n > 1) %>%
+  filter(str_length(county_name) == max(str_length(county_name))) %>%
+  mutate(county_name = case_when(
+    county_name == "La Salle Parish" ~ "LaSalle Parish",
+    county_name == "La Salle County" ~ "LaSalle County",
+    T ~ county_name
+  )) %>%
+  ungroup()
+
+state_county_names_clean <- bind_rows(one_name, two_name) %>% select(-n)
+
+state_county_names_clean_join <-
+  longitudinal %>%
+  distinct(state_fips, county_fips, full_fips, state_abb, county_name) %>%
+  filter(!(full_fips %in% state_county_names_clean)) %>%
+  bind_rows(state_county_names_clean)
+
+write_csv(
+  state_county_names_clean_join,
+  file = here("clean_chrr-wphi", "output", "county_state_names.csv")
+)
+
+cross_section <-
+  cross_section %>%
+  select(-state_abb, -state_fips, -county_name, -county_fips)
+
+longitudinal <-
+  longitudinal %>%
+  select(-state_fips, -county_fips, -county_name, -state_abb,)
+
 ##################################################################
 ##         Merge release year with years of measurement         ##
 ##################################################################

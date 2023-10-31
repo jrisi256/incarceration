@@ -1,0 +1,196 @@
+---
+title: "Estimating differences in duplicate start years"
+format: pdf
+execute:
+  echo: FALSE
+---
+
+```{r, message = F}
+library(here)
+library(readr)
+library(purrr)
+library(dplyr)
+library(ggplot2)
+library(forcats)
+library(flextable)
+```
+
+```{r, message = F}
+cross_nonsplit_late_startyearmin <-
+  read_csv(
+    here(
+      "clean_chrr-wphi",
+      "output",
+      "dedupe_start_end",
+      "cross_nonsplit_late_start_year-min.csv"
+    )
+  ) %>%
+  filter(stem == "raw_value")
+
+cross_nonsplit_late_startyearmax <-
+  read_csv(
+    here(
+      "clean_chrr-wphi",
+      "output",
+      "dedupe_start_end",
+      "cross_nonsplit_late_start_year-max.csv"
+    )
+  ) %>%
+  filter(stem == "raw_value")
+```
+
+Thankfully, there are very few cascades in the various data design decisions made. None of the values which had different cross sectional vs. longitudinal estimates had duplicate entries. Only one value which had a duplicate start year and end year entry was also affected by having multiple observations for the same start year.
+
+```{r}
+longcross_minmax_start_ftab <-
+  flextable(
+    as.data.frame(
+      table(
+        cross_nonsplit_late_startyearmax$cross_longitudinal_match,
+        cross_nonsplit_late_startyearmax$dedupe
+      )
+    )
+  )
+
+dedupe_minmax_start_ftab <-
+  flextable(
+    as.data.frame(
+      table(
+        cross_nonsplit_late_startyearmax$dedupe,
+        cross_nonsplit_late_startyearmax$dedupe_start_end_year
+      )
+    )
+  )
+
+longcross_minmax_start_ftab
+dedupe_minmax_start_ftab
+```
+
+```{r}
+compare_tbl <- table(cross_nonsplit_late_startyearmin$dedupe_start_end_year)
+compare_tbl_prop <- prop.table(compare_tbl) * 100
+flextable(as.data.frame(compare_tbl))
+flextable(as.data.frame(compare_tbl_prop))
+```
+
+```{r}
+min_raw_slct <-
+  cross_nonsplit_late_startyearmin %>%
+  select(
+    -cross_longitudinal_match,
+    -release_year,
+    -stem,
+    -dedupe,
+    -dedupe_start_end_year,
+    -end_year
+  )
+
+max_raw_slct <-
+  cross_nonsplit_late_startyearmax %>%
+  select(
+    -cross_longitudinal_match,
+    -release_year,
+    -stem,
+    -dedupe,
+    -dedupe_start_end_year,
+    -end_year
+  )
+
+compare <-
+  full_join(
+    min_raw_slct,
+    max_raw_slct,
+    by = c("full_fips", "variable", "race", "start_year")
+  ) %>%
+  mutate(
+    match =
+      case_when(
+        is.na(values.x) & is.na(values.y) ~ "both missing",
+        near(values.x, values.y) ~ "match",
+        !near(values.x, values.y) ~ "no match"
+      )
+  )
+
+dedupe_variables <-
+  compare %>%
+  count(variable, match) %>%
+  group_by(variable) %>%
+  filter(any(match == "no match")) %>%
+  mutate(prcnt = n / sum(n)) %>%
+  ungroup() %>%
+  filter(match == "no match")
+```
+
+```{r}
+ggplot(dedupe_variables) +
+  geom_bar(aes(x = fct_reorder(variable, n), y = n), stat = "identity") +
+  coord_flip() +
+  theme_bw() +
+  xlab("Variable")
+
+ggplot(dedupe_variables, aes(x = fct_reorder(variable, prcnt), y = prcnt)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_bw() +
+  xlab("Variable") +
+  ylab("Proportion of variable rows which do match")
+```
+
+```{r}
+non_matches <-
+  compare %>%
+  filter(match == "no match") %>%
+  mutate(
+    ratio =
+      if_else(
+        values.x != 0 & values.y != 0,
+        values.x / values.y,
+        NaN
+      )
+  ) %>%
+  group_by(variable) %>%
+  filter(n_distinct(ratio) > 1) %>%
+  ungroup()
+
+non_matching_vars <- unique(non_matches$variable)
+```
+
+```{r}
+densitychart <- function(df, col) {
+  df <- df %>% filter(variable == col)
+  values <- df %>% pull(ratio)
+  boxplot_coord <- max(density(values, na.rm = T)$y) / 2
+  
+  ggplot(df, aes(x = ratio)) +
+    geom_boxplot(aes(y = -boxplot_coord), width = boxplot_coord) +
+    geom_density() +
+    labs(x = col, y = "density") +
+    theme_bw()
+}
+
+map(as.list(non_matching_vars), densitychart, df = non_matches)
+```
+
+```{r}
+descriptive_table_ratio <-
+  non_matches %>%
+  group_by(variable) %>%
+  summarise(
+    mean = round(mean(ratio, na.rm = T), digits = 3),
+    sd = round(sd(ratio, na.rm = T), digits = 3),
+    min = round(min(ratio, na.rm = T), digits = 3),
+    p25 = round(quantile(ratio, probs = 0.25, na.rm = T)[["25%"]], digits = 3),
+    median = round(median(ratio, na.rm = T), digits = 3),
+    p75 = round(quantile(ratio, probs = 0.75, na.rm = T)[["75%"]], digits = 3),
+    iqr = round(IQR(ratio, na.rm = T), digits = 3),
+    mad = round(mad(ratio, na.rm = T), digits = 3),
+    max = round(max(ratio, na.rm = T), digits = 3),
+    nr_missing = sum(is.nan(ratio)),
+    prcnt_missing = round(sum(is.nan(ratio)) / n(), digits = 3),
+    nr_rows = n()
+  )
+
+ft <- flextable(descriptive_table_ratio)
+ft <- fit_to_width(ft, max_width = 7)
+ft
+```

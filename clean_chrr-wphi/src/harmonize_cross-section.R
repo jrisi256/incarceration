@@ -432,50 +432,12 @@ drinking_water_bin <-
 
 county_harmonize <- bind_rows(county_harmonize, drinking_water_bin)
 
-#################################################################
-##             Separate out county and state names             ##
-#################################################################
-state_county_names <-
-  county_harmonize %>%
-  distinct(state_fips, county_fips, full_fips, state_abb, county_name)
-
-one_name <-
-  state_county_names %>%
-  group_by(full_fips) %>%
-  mutate(n = n()) %>%
-  filter(n == 1) %>%
-  ungroup()
-
-two_name <-
-  state_county_names %>%
-  group_by(full_fips) %>%
-  mutate(n = n()) %>%
-  filter(n > 1) %>%
-  filter(str_length(county_name) == max(str_length(county_name))) %>%
-  mutate(county_name = case_when(
-    county_name == "La Salle Parish" ~ "LaSalle Parish",
-    county_name == "La Salle County" ~ "LaSalle County",
-    T ~ county_name
-  )) %>%
-  ungroup()
-
-state_county_names_clean <- bind_rows(one_name, two_name) %>% select(-n)
-
 ##################################################################
 ##                        Write out data                        ##
 ##################################################################
 if (!dir.exists(here("clean_chrr-wphi", "output", "harmonize"))) {
   dir.create(here("clean_chrr-wphi", "output", "harmonize"))
 }
-
-write_csv(
-  state_county_names_clean,
-  file = here("clean_chrr-wphi", "output", "county_state_names.csv")
-)
-
-county_harmonize <-
-  county_harmonize %>%
-  select(-state_abb, -state_fips, -county_name, -county_fips)
 
 write_csv(
   county_harmonize,

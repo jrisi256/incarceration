@@ -1,99 +1,128 @@
+library(here)
+library(readr)
+library(dplyr)
+library(purrr)
+library(dtplyr)
+library(data.table)
+
+##################################################################
+##                         Read in data                         ##
+##################################################################
+cross_non_split <-
+  read_csv(here("clean_chrr-wphi", "output", "joined", "cross_joined.csv"))
+
+# cross_split <-
+#   read_csv(here("clean_chrr-wphi", "output", "split", "cross_split.csv"))
+
+longitudinal_non_split <-
+  read_csv(
+    here("clean_chrr-wphi", "output", "joined", "longitudinal_joined.csv")
+  )
+
+# longitudinal_split <-
+#   read_csv(
+#     here("clean_chrr-wphi", "output", "split", "longitudinal_split.csv")
+#   )
+
 ##################################################################
 ##                     Fix duplicate values                     ##
 ##################################################################
+dedupe <- function(df) {
+  check_dupes <-
+    df %>%
+    lazy_dt() %>%
+    group_by(full_fips, variable, start_year, end_year, stem, race) %>%
+    mutate(n_distinct = n_distinct(values),
+           n = n()) %>%
+    ungroup() %>%
+    filter(!is.na(values) | n_distinct <= 1) %>%
+    as_tibble()
 
-# Connects release year to actual years of data coverage
-year_matching <-
-  read_csv(
-    here("clean_chrr-wphi", "output", "year_matching.csv"),
-    col_types =
-      cols_only(
-        release_year = "c",
-        start_year = "c",
-        end_year = "c",
-        variable = "c"
-      )
+  # Only one observation for the given year or year-range.
+  one <-
+    check_dupes %>%
+    filter(n == 1) %>%
+    mutate(dedupe = "no duplicate") %>%
+    select(-n_distinct, -n)
+  
+  # Two observations for a given year, but both values are the same. Keep one.
+  two_same <-
+    check_dupes %>%
+    filter(n > 1 & n_distinct == 1) %>%
+    distinct(
+      full_fips,
+      variable,
+      stem,
+      race,
+      start_year,
+      end_year,
+      .keep_all = T
+    ) %>%
+    mutate(dedupe = "same value") %>%
+    select(-n_distinct, -n)
+
+  # Two observations for a given year, and the values are different.
+  # Keep earlier or later value.
+  two_different_early <-
+    check_dupes %>%
+    lazy_dt() %>%
+    group_by(full_fips, variable, start_year, end_year, stem, race) %>%
+    filter(n_distinct == 2, stem == "raw_value", !any(is.na(values))) %>%
+    filter(release_year == min(release_year)) %>%
+    ungroup() %>%
+    select(-cross_longitudinal_match, -n_distinct, -values, -stem, -n) %>%
+    left_join(df, multiple = "all") %>%
+    mutate(dedupe = "early") %>%
+    as_tibble()
+  
+  two_different_late <-
+    check_dupes %>%
+    lazy_dt() %>%
+    group_by(full_fips, variable, start_year, end_year, stem, race) %>%
+    filter(n_distinct == 2, stem == "raw_value", !any(is.na(values))) %>%
+    filter(release_year == max(release_year)) %>%
+    ungroup() %>%
+    select(-cross_longitudinal_match, -n_distinct, -values, -stem, -n) %>%
+    left_join(df, multiple = "all") %>%
+    mutate(dedupe = "late") %>%
+    as_tibble()
+  
+  early <- bind_rows(one, two_same, two_missing, two_different_early)
+  late <- bind_rows(one, two_same, two_missing, two_different_late)
+  return(list(early, late))
+}
+
+deduped_data <-
+  map(
+    list(
+      #cross_non_split,
+      longitudinal_non_split
+    ),
+    dedupe
   ) %>%
-  filter(!is.na(start_year))
+  list_flatten()
 
-county_level_harmonize_year_match <-
-  county_level_harmonize %>%
-  inner_join(year_matching, by = c("variable", "release_year"))
-
-# Connects release year to actual years of data coverage by state
-year_state_matching <-
-  read_csv(
-    here("clean_chrr-wphi", "output", "year_state_matching.csv"),
-    col_types = cols(release_year = "c", start_year = "c", end_year = "c")
+names(deduped_data) <-
+  c(
+    #"cross_nonsplit_early",
+    #"cross_nonsplit_late",
+    "longitudinal_nonsplit_early",
+    "longitudinal_nonsplit_late"
   )
 
-county_level_harmonize_year_state_match <-
-  county_level_harmonize %>%
-  inner_join(
-    year_state_matching,
-    by = c("variable", "release_year", "state_abb")
-  )
+##################################################################
+##                        Write out data                        ##
+##################################################################
+if (!dir.exists(here("clean_chrr-wphi", "output", "dedupe"))) {
+  dir.create(here("clean_chrr-wphi", "output", "dedupe"))
+}
 
-county_level_harmonize_distinct <-
-  bind_rows(
-    county_level_harmonize_year_match,
-    county_level_harmonize_year_state_match
-  ) %>%
-  select(-state_abb, -state_fips, -county_name, -county_fips) %>%
-  group_by(full_fips, start_year, end_year, variable, stem, race) # %>%
-# mutate(n_distinct = n_distinct(values),
-#        n = n())
-
-# When there is a duplicate entry, keep the one from the latest release.
-county_level_harmonize_latest <-
-  county_level_harmonize_distinct %>%
-  # select(-n, -n_distinct) %>%
-  filter(release_year == max(release_year)) %>%
-  ungroup()
-
-# When there is a duplicate entry, keep the one from the earliest release.
-county_level_harmonize_earliest <-
-  county_level_harmonize_distinct %>%
-  # select(-n, -n_distinct) %>%
-  filter(release_year == min(release_year)) %>%
-  ungroup()
-
-compare <-
-  county_level_harmonize_latest %>%
-  filter(stem == "raw_value") %>%
-  full_join(
-    filter(county_level_harmonize_earliest, stem == "raw_value"),
-    by = c("full_fips", "variable", "stem", "race", "start_year", "end_year")
-  ) %>%
-  mutate(
-    match =
-      case_when(
-        is.na(values.x) & is.na(values.y) ~ "both missing",
-        is.na(values.x) & !is.na(values.y) ~ "latest missing",
-        !is.na(values.x) & is.na(values.y) ~ "earliest missing",
-        near(values.x, values.y) ~ "match",
-        !near(values.x, values.y) ~ "no match"
-      )
-  )
-
-compare_tbl <- table(compare$match)
-
-write_csv(
-  county_level_harmonize_latest,
-  file =
-    here(
-      "clean_chrr-wphi",
-      "output",
-      "county_repeated-cross-section_latest.csv"
+pwalk(
+  list(deduped_data, as.list(names(deduped_data))),
+  function(df, name) {
+    write_csv(
+      df,
+      here("clean_chrr-wphi", "output", "dedupe", paste0(name, ".csv"))
     )
-)
-
-write_csv(
-  county_level_harmonize_earliest,
-  file =
-    here(
-      "clean_chrr-wphi",
-      "output",
-      "county_repeated-cross-section_earliest.csv"
-    )
+  }
 )

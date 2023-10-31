@@ -140,10 +140,6 @@ longitudinal_data <-
   select(
     -measureid,
     -differflag,
-    -state_fips,
-    -county_fips,
-    -county_name,
-    -state_abb,
     -trendbreak
   ) %>%
   pivot_longer(

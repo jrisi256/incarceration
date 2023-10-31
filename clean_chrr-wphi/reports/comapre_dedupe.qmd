@@ -1,0 +1,194 @@
+---
+title: "Estimating differences in duplicated entries"
+format: pdf
+execute:
+  echo: FALSE
+---
+
+```{r, message = F}
+library(here)
+library(readr)
+library(dplyr)
+library(purrr)
+library(knitr)
+library(ggplot2)
+library(forcats)
+library(flextable)
+```
+
+```{r, message = F}
+cross_early <-
+  read_csv(
+    here("clean_chrr-wphi", "output", "dedupe", "cross_nonsplit_early.csv")
+  ) %>%
+  filter(stem == "raw_value")
+
+cross_late <-
+  read_csv(
+    here("clean_chrr-wphi", "output", "dedupe", "cross_nonsplit_late.csv")
+  ) %>%
+  filter(stem == "raw_value")
+
+longitudinal_early <-
+  read_csv(
+    here(
+      "clean_chrr-wphi",
+      "output",
+      "dedupe",
+      "longitudinal_nonsplit_early.csv"
+    )
+  ) %>%
+  filter(stem == "raw_value")
+
+# longitudinal_late <-
+#   read_csv(
+#     here(
+#       "clean_chrr-wphi",
+#       "output",
+#       "dedupe",
+#       "longitudinal_nonsplit_late.csv")
+#   ) %>%
+#   filter(stem == "raw_value")
+```
+
+None of the values which did not match between the cross-sectional and longitudinal data had to be de-duped. Stated more plainly, any observation which had different cross-section vs. longitudinal estimates did not have more than observation for a given year or year range in which the estimates were different.
+
+```{r}
+cross_ktab <-
+  kable(
+    as.data.frame(
+      table(cross_early$cross_longitudinal_match, cross_early$dedupe)
+    )
+  )
+
+longitudinal_ktab <-
+  kable(
+    as.data.frame(
+      table(
+        longitudinal_early$cross_longitudinal_match,
+        longitudinal_early$dedupe
+      )
+    )
+  )
+```
+
+```{r}
+#| tbl-cap: "Comparing deduped values across Cross Sectional and Longitudinal data"
+#| tbl-subcap: 
+#|   - "Cross sectional"
+#|   - "Longitudinal"
+cross_ktab
+longitudinal_ktab
+```
+
+**Early** (or later) means the value from the earlier (or later) year was selected in cases where we had multiple observations for the same year (or year range), and the values were different. **Same value** indicates there were multiple observations for the same year (or year range), and both values were the same. Only one needed to kept as a result. **Kept non-missing** indicates there multiple observations for the same year (or year range), and one of the values was missing so I simply kept the non-missing value. Finally **no duplicate** indicates the there were not multiple observations for the same year (or year range).
+
+```{r}
+compare_tbl <- table(cross_early$dedupe)
+compare_tbl_prop <- prop.table(compare_tbl) * 100
+flextable(as.data.frame(compare_tbl))
+flextable(as.data.frame(compare_tbl_prop))
+```
+
+* **Number of rows**: `r nrow(cross_early)`
+* **Number of non-duplicates (regardless of same values)**: `r compare_tbl[["no duplicate"]] + compare_tbl[["same value"]]`
+* **Percent of non-duplicates (regardless of same values)**: `r compare_tbl_prop[["no duplicate"]] +  compare_tbl_prop[["same value"]]`
+
+```{r}
+compare <-
+  full_join(
+    select(cross_early, -cross_longitudinal_match, -release_year, -stem),
+    select(cross_late, -cross_longitudinal_match, -release_year, -stem),
+    by = c("full_fips", "variable", "race", "start_year", "end_year")
+  ) %>%
+  mutate(
+    dedupe =
+      case_when(
+        is.na(values.x) & is.na(values.y) ~ "both missing",
+        near(values.x, values.y) ~ "match",
+        !near(values.x, values.y) ~ "no match"
+      )
+  ) %>%
+  select(-dedupe.x, -dedupe.y)
+
+dedupe_variables <-
+  compare %>%
+  count(variable, dedupe) %>%
+  group_by(variable) %>%
+  filter(any(dedupe == "no match")) %>%
+  mutate(prcnt = n / sum(n)) %>%
+  ungroup() %>%
+  filter(dedupe == "no match")
+```
+
+```{r}
+ggplot(dedupe_variables) +
+  geom_bar(aes(x = fct_reorder(variable, n), y = n), stat = "identity") +
+  coord_flip() +
+  theme_bw() +
+  xlab("Variable")
+
+ggplot(dedupe_variables, aes(x = fct_reorder(variable, prcnt), y = prcnt)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_bw() +
+  xlab("Variable") +
+  ylab("Proportion of variable rows which do match")
+```
+
+```{r}
+non_matches <-
+  compare %>%
+  filter(dedupe == "no match") %>%
+  mutate(
+    ratio =
+      if_else(
+        values.x != 0 & values.y != 0,
+        values.x / values.y,
+        NaN
+      )
+  ) %>%
+  group_by(variable) %>%
+  filter(n_distinct(ratio) > 1) %>%
+  ungroup()
+
+non_matching_vars <- unique(non_matches$variable)
+```
+
+```{r}
+densitychart <- function(df, col) {
+  df <- df %>% filter(variable == col)
+  values <- df %>% pull(ratio)
+  boxplot_coord <- max(density(values, na.rm = T)$y) / 2
+  
+  ggplot(df, aes(x = ratio)) +
+    geom_boxplot(aes(y = -boxplot_coord), width = boxplot_coord) +
+    geom_density() +
+    labs(x = col, y = "density") +
+    theme_bw()
+}
+
+map(as.list(non_matching_vars), densitychart, df = non_matches)
+```
+
+```{r}
+descriptive_table_ratio <-
+  non_matches %>%
+  group_by(variable) %>%
+  summarise(
+    mean = round(mean(ratio, na.rm = T), digits = 3),
+    sd = round(sd(ratio, na.rm = T), digits = 3),
+    min = round(min(ratio, na.rm = T), digits = 3),
+    p25 = round(quantile(ratio, probs = 0.25, na.rm = T)[["25%"]], digits = 3),
+    median = round(median(ratio, na.rm = T), digits = 3),
+    p75 = round(quantile(ratio, probs = 0.75, na.rm = T)[["75%"]], digits = 3),
+    iqr = round(IQR(ratio, na.rm = T), digits = 3),
+    mad = round(mad(ratio, na.rm = T), digits = 3),
+    max = round(max(ratio, na.rm = T), digits = 3),
+    nr_missing = sum(is.nan(ratio))
+  )
+
+ft <- flextable(descriptive_table_ratio)
+ft <- fit_to_width(ft, max_width = 7.5)
+ft
+```
