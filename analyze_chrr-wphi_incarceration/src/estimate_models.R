@@ -11,6 +11,7 @@ library(ggplot2)
 ##################################################################
 ##                         Read in data                         ##
 ##################################################################
+# Look into jail discharges and male/female juvenile population.
 incarceration <-
   read_csv(here("incarceration_trends.csv")) %>%
   select(total_jail_adm_rate, total_prison_adm_rate, year, fips, state) %>%
@@ -107,7 +108,8 @@ a <-
     children_in_single_parent_households,
     child_mortality,
     infant_mortality,
-    low_birthweight
+    low_birthweight,
+    unemployment
   ) %>%
   mutate(
     teen_births = teen_births * 100,
@@ -116,14 +118,15 @@ a <-
     infant_mortality = infant_mortality * 100,
     low_birthweight = low_birthweight * 100000,
     total_prison_adm_rate = total_prison_adm_rate / 100,
-    total_jail_adm_rate = total_jail_adm_rate / 100
+    total_jail_adm_rate = total_jail_adm_rate / 100,
+    unemployment = unemployment * 10000
   ) %>%
   #filter(if_all(everything(), ~ !is.na(.x))) %>%
   arrange(full_fips, year) %>%
   group_by(full_fips) %>%
   mutate(
     across(
-      total_jail_adm_rate:low_birthweight, list(lag1 = ~ lag(.x, n = 1))
+      total_jail_adm_rate:unemployment, list(lag1 = ~ lag(.x, n = 1))
     ),
     across(
       total_jail_adm_rate:homicides,
@@ -136,6 +139,22 @@ a <-
     )
   )
 
+model_unemployment_both <-
+  feols(
+    unemployment ~
+      total_prison_adm_rate_lag1 + I(total_prison_adm_rate_lag1 ^ 2) +
+      total_jail_adm_rate_lag1 + I(total_jail_adm_rate_lag1 ^ 2) | full_fips + year,
+    data = a
+  )
+
+model_single_parent_both <-
+  feols(
+    children_in_single_parent_households ~
+      total_prison_adm_rate_lag1 + I(total_prison_adm_rate_lag1 ^ 2) +
+      total_jail_adm_rate_lag1 + I(total_jail_adm_rate_lag1 ^ 2)  | full_fips + year,
+    data = a
+  )
+
 models <-
   map(
     list(
@@ -144,14 +163,16 @@ models <-
       single_parents = "children_in_single_parent_households",
       child_mortality = "child_mortality",
       infant_mortality = "infant_mortality",
-      low_birthweight = "low_birthweight"
+      low_birthweight = "low_birthweight",
+      unemployment = "unemployment",
+      homicides = "homicides"
     ),
     function(df, dep_var) {
       lag <- paste0(dep_var, "_lag1")
       
       f <- feols(
         as.formula(
-          paste(dep_var, " ~ total_prison_adm_rate | full_fips + year")
+          paste(dep_var, " ~ total_prison_adm_rate + I(total_prison_adm_rate ^ 2) | full_fips + year")
         ),
         data = df
       )
@@ -159,7 +180,7 @@ models <-
       f1 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ total_prison_adm_rate_lag1 | full_fips + year"
+            dep_var, " ~ total_prison_adm_rate_lag1 + I(total_prison_adm_rate_lag1 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -168,7 +189,7 @@ models <-
       f2 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ total_prison_adm_rate_lag2 | full_fips + year"
+            dep_var, " ~ total_prison_adm_rate_lag2 + I(total_prison_adm_rate_lag2 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -177,7 +198,7 @@ models <-
       f3 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ total_prison_adm_rate_lag3 | full_fips + year"
+            dep_var, " ~ total_prison_adm_rate_lag3 + I(total_prison_adm_rate_lag3 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -186,7 +207,7 @@ models <-
       f5 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ total_prison_adm_rate_lag5 | full_fips + year"
+            dep_var, " ~ total_prison_adm_rate_lag5 + I(total_prison_adm_rate_lag5 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -195,7 +216,7 @@ models <-
       f10 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ total_prison_adm_rate_lag10 | full_fips + year"
+            dep_var, " ~ total_prison_adm_rate_lag10 + I(total_prison_adm_rate_lag10 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -270,22 +291,23 @@ models_homicide <-
       single_parents = "children_in_single_parent_households",
       child_mortality = "child_mortality",
       infant_mortality = "infant_mortality",
-      low_birthweight = "low_birthweight"
+      low_birthweight = "low_birthweight",
+      unemployment = "unemployment"
     ),
     function(df, dep_var) {
       lag <- paste0(dep_var, "_lag1")
       
-      f <- feols(
-        as.formula(
-          paste(dep_var, " ~ homicides + total_prison_adm_rate | full_fips + year")
-        ),
-        data = df
-      )
+      # f <- feols(
+      #   as.formula(
+      #     paste(dep_var, " ~ homicides + total_prison_adm_rate | full_fips + year")
+      #   ),
+      #   data = df
+      # )
       
       f1 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ homicides_lag1 + total_prison_adm_rate_lag1 | full_fips + year"
+            dep_var, " ~ homicides + total_prison_adm_rate_lag1 + I(total_prison_adm_rate_lag1 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -294,7 +316,7 @@ models_homicide <-
       f2 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ homicides_lag2 + total_prison_adm_rate_lag2 | full_fips + year"
+            dep_var, " ~ homicides + total_prison_adm_rate_lag2 + I(total_prison_adm_rate_lag2 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -303,7 +325,7 @@ models_homicide <-
       f3 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ homicides_lag3 + total_prison_adm_rate_lag3 | full_fips + year"
+            dep_var, " ~ homicides + total_prison_adm_rate_lag3 + I(total_prison_adm_rate_lag3 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -312,7 +334,7 @@ models_homicide <-
       f5 <- feols(
         as.formula(
           paste(
-            dep_var, " ~ homicides_lag5 + total_prison_adm_rate_lag5 | full_fips + year"
+            dep_var, " ~ homicides + total_prison_adm_rate_lag5 + I(total_prison_adm_rate_lag5 ^ 2) | full_fips + year"
           )
         ),
         data = df
@@ -327,7 +349,8 @@ models_homicide <-
         data = df
       )
       
-      return(list(f = f, f1 = f1, f2 = f2, f3 = f3, f5 = f5, f10 = f10))
+      return(list(#f = f, 
+                  f1 = f1, f2 = f2, f3 = f3, f5 = f5, f10 = f10))
     },
     df = a
   ) %>%
